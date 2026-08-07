@@ -1,0 +1,93 @@
+export interface Stock {
+  symbol: string;
+  name: string;
+  sector: string;
+  currentPrice: number;
+  change24h: number;
+  minInvestment: number;
+  durationsDays: number[]; // e.g. [30, 90, 180, 365, 730, 3650]
+  projectedAnnualReturn: number; // %
+}
+
+export const STOCKS_CATALOG: Stock[] = [
+  {
+    symbol: "AAPL",
+    name: "Apple Inc.",
+    sector: "Technology",
+    currentPrice: 224.50,
+    change24h: 1.85,
+    minInvestment: 500,
+    durationsDays: [30, 90, 180, 365, 730, 3650],
+    projectedAnnualReturn: 18.5,
+  },
+  {
+    symbol: "TSLA",
+    name: "Tesla Inc.",
+    sector: "Automotive & EV",
+    currentPrice: 212.80,
+    change24h: 3.42,
+    minInvestment: 750,
+    durationsDays: [90, 180, 365, 730],
+    projectedAnnualReturn: 28.0,
+  },
+  {
+    symbol: "NVDA",
+    name: "NVIDIA Corporation",
+    sector: "Semiconductors & AI",
+    currentPrice: 128.90,
+    change24h: 4.15,
+    minInvestment: 500,
+    durationsDays: [30, 90, 180, 365, 730],
+    projectedAnnualReturn: 35.2,
+  },
+  {
+    symbol: "AMZN",
+    name: "Amazon.com Inc.",
+    sector: "E-Commerce & Cloud",
+    currentPrice: 186.40,
+    change24h: 0.95,
+    minInvestment: 500,
+    durationsDays: [30, 90, 180, 365],
+    projectedAnnualReturn: 21.0,
+  },
+  {
+    symbol: "BTC",
+    name: "Bitcoin Spot ETF Trust",
+    sector: "Crypto Digital Asset",
+    currentPrice: 64200.00,
+    change24h: -1.20,
+    minInvestment: 1000,
+    durationsDays: [30, 90, 180, 365, 730],
+    projectedAnnualReturn: 42.0,
+  },
+  {
+    symbol: "ETH",
+    name: "Ethereum Staking Index",
+    sector: "Crypto Smart Contracts",
+    currentPrice: 3450.00,
+    change24h: 2.10,
+    minInvestment: 500,
+    durationsDays: [30, 90, 180, 365],
+    projectedAnnualReturn: 32.5,
+  },
+  {
+    symbol: "SPY",
+    name: "SPDR S&P 500 ETF Trust",
+    sector: "US Index Fund",
+    currentPrice: 552.10,
+    change24h: 0.45,
+    minInvestment: 500,
+    durationsDays: [180, 365, 730, 3650],
+    projectedAnnualReturn: 14.2,
+  },
+  {
+    symbol: "VTI",
+    name: "Vanguard Total Stock Market",
+    sector: "Global Equity Index",
+    currentPrice: 271.30,
+    change24h: 0.38,
+    minInvestment: 500,
+    durationsDays: [180, 365, 730, 3650],
+    projectedAnnualReturn: 12.8,
+  },
+];

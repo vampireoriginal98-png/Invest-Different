@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "users": {
+      "title": "users",
+      "description": "User accounts and balances",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "kycStatus": { "type": "string" },
+        "balance": { "type": "number" },
+        "totalDeposited": { "type": "number" },
+        "totalWithdrawn": { "type": "number" },
+        "referralCode": { "type": "string" },
+        "referralEarnings": { "type": "number" },
+        "transactionPin": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    },
+    "investments": {
+      "title": "investments",
+      "description": "User bot, stock, and insurance holdings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "planId": { "type": "string" },
+        "amount": { "type": "number" },
+        "dailyProfit": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "deposits": {
+      "title": "deposits",
+      "description": "Deposit transaction history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "withdrawals": {
+      "title": "withdrawals",
+      "description": "Withdrawal transaction history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    }
+  }
+}

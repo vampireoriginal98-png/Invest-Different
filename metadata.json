@@ -1,0 +1,6 @@
+{
+  "name": "Invest Different",
+  "description": "High-yield investment platform foundation with user dashboard, crypto deposit wallet, KYC verification, investment plans, referral system, and full admin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
