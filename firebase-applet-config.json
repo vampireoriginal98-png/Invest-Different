@@ -1,8 +1,8 @@
 {
-  "apiKey": "DUMMY_API_KEY_XXXXXXXXXXXXXXXXXXXX",
-  "authDomain": "dummy-project.firebaseapp.com",
-  "projectId": "dummy-project-id",
-  "storageBucket": "dummy-project.appspot.com",
-  "messagingSenderId": "000000000000",
-  "appId": "1:000000000000:web:00000000000000000000"
+  "apiKey": "AIzaSyA0b1c2d3E4fG5h6I7jK8l9M0nOpQrStU",
+  "authDomain": "project-123456.firebaseapp.com",
+  "projectId": "project-123456",
+  "storageBucket": "project-123456.appspot.com",
+  "messagingSenderId": "123456789012",
+  "appId": "1:123456789012:web:abcdef1234567890"
 }
