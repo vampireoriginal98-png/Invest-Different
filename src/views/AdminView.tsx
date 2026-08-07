@@ -267,31 +267,60 @@ export function AdminView() {
         ))}
       </div>
 
-      {/* Tab Selectors */}
-      <div className="flex gap-2 border-b border-slate-800 pb-2 overflow-x-auto scrollbar-none">
-        {[
-          { id: "overview", label: "Overview", icon: BarChart3 },
-          { id: "deposits", label: `Deposits (${stats.pendingDeposits})`, icon: Wallet },
-          { id: "withdrawals", label: `Withdrawals (${stats.pendingWithdrawals})`, icon: ArrowUpRight },
-          { id: "kyc", label: `KYC Review (${stats.pendingKyc})`, icon: ShieldCheck },
-          { id: "socials", label: "Social Verifications", icon: Share2 },
-          { id: "users", label: "User Database", icon: Users },
-          { id: "messages", label: "Direct Messages", icon: MessageSquare },
-          { id: "settings", label: "Wallet & System", icon: Settings },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id as any)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-              activeTab === t.id
-                ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
-            }`}
+      {/* Admin Horizontal Navigation & Fast Dropdown Switcher */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 shadow-xl">
+        <div className="flex items-center justify-between w-full lg:w-auto gap-3 shrink-0">
+          <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest shrink-0 flex items-center gap-1.5">
+            <BarChart3 className="w-4 h-4 text-emerald-400" />
+            SuperControl Nav:
+          </span>
+
+          {/* Quick Dynamic Dropdown Select for Fast Jumping on all devices */}
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value as any)}
+            className="bg-slate-950 border border-slate-800 text-emerald-300 font-bold text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[200px] sm:max-w-none"
           >
-            <t.icon className="w-4 h-4 text-emerald-400" />
-            <span>{t.label}</span>
-          </button>
-        ))}
+            <option value="overview">📊 Overview & Broadcast</option>
+            <option value="deposits">💰 Deposits Queue ({stats.pendingDeposits})</option>
+            <option value="withdrawals">💸 Withdrawals Queue ({stats.pendingWithdrawals})</option>
+            <option value="kyc">📋 KYC Approvals ({stats.pendingKyc})</option>
+            <option value="socials">📱 Social Link Verification</option>
+            <option value="users">👥 User Database</option>
+            <option value="messages">💬 Direct User Messages</option>
+            <option value="settings">⚙️ System Wallet & Settings</option>
+          </select>
+        </div>
+
+        {/* Scrollable Horizontal Tabs with Custom Visible Scrollbar */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-emerald-500/50 scrollbar-track-slate-950 py-2 w-full max-w-full">
+          {[
+            { id: "overview", label: "Overview", icon: BarChart3 },
+            { id: "deposits", label: `Deposits (${stats.pendingDeposits})`, icon: Wallet, alert: stats.pendingDeposits > 0 },
+            { id: "withdrawals", label: `Withdrawals (${stats.pendingWithdrawals})`, icon: ArrowUpRight, alert: stats.pendingWithdrawals > 0 },
+            { id: "kyc", label: `KYC Review (${stats.pendingKyc})`, icon: ShieldCheck, alert: stats.pendingKyc > 0 },
+            { id: "socials", label: "Social Verifications", icon: Share2 },
+            { id: "users", label: "User Database", icon: Users },
+            { id: "messages", label: "Direct Messages", icon: MessageSquare },
+            { id: "settings", label: "Wallet & System", icon: Settings },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id as any)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+                activeTab === t.id
+                  ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-md shadow-emerald-500/10 font-extrabold"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-950 border border-transparent"
+              }`}
+            >
+              <t.icon className={`w-3.5 h-3.5 ${activeTab === t.id ? "text-emerald-400" : "text-slate-500"}`} />
+              <span>{t.label}</span>
+              {t.alert && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Active Tab View */}

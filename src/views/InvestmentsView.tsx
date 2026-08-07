@@ -5,10 +5,24 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { DepositModal } from "@/components/ui/DepositModal";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { TrendingUp, Sparkles, Check, Calculator, ShieldCheck, Zap, Bot, ArrowRight } from "lucide-react";
+import { TrendingUp, Sparkles, Check, Calculator, ShieldCheck, Zap, Bot, ArrowRight, Cpu, Activity, Gauge } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 import confetti from "canvas-confetti";
+
+interface BotPlan {
+  type: string;
+  min: number;
+  max: number;
+  monthlyPercent: number;
+  durationDays: number;
+  badge: string;
+  popular?: boolean;
+  latency: string;
+  aiScore: string;
+  colorScheme: "cyan" | "indigo" | "gold" | "emerald" | "amber";
+  description: string;
+}
 
 export function InvestmentsView() {
   const { user, updateBalance, setCurrentTab } = useAuthStore();
@@ -18,7 +32,7 @@ export function InvestmentsView() {
   const [activeInvestments, setActiveInvestments] = useState<any[]>([]);
   const [showDepositModal, setShowDepositModal] = useState(false);
 
-  const plans = [
+  const plans: BotPlan[] = [
     {
       type: "Bronze Starter Bot",
       min: 50,
@@ -26,7 +40,9 @@ export function InvestmentsView() {
       monthlyPercent: 8.5,
       durationDays: 30,
       badge: "Beginner Bot",
-      botImage: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80",
+      latency: "24ms Latency",
+      aiScore: "96.2%",
+      colorScheme: "cyan",
       description: "Low-frequency arbitrage trading bot ideal for testing daily yield execution.",
     },
     {
@@ -36,7 +52,9 @@ export function InvestmentsView() {
       monthlyPercent: 10.5,
       durationDays: 30,
       badge: "Steady Bot",
-      botImage: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=200&auto=format&fit=crop&q=80",
+      latency: "14ms Latency",
+      aiScore: "97.8%",
+      colorScheme: "indigo",
       description: "Multi-exchange orderbook engine producing continuous 24-hour yield compounding.",
     },
     {
@@ -47,7 +65,9 @@ export function InvestmentsView() {
       durationDays: 30,
       badge: "Most Popular Bot",
       popular: true,
-      botImage: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=200&auto=format&fit=crop&q=80",
+      latency: "4ms Latency",
+      aiScore: "99.1%",
+      colorScheme: "gold",
       description: "High-frequency triangular arbitrage engine optimized for maximum daily yield.",
     },
     {
@@ -57,7 +77,9 @@ export function InvestmentsView() {
       monthlyPercent: 16.0,
       durationDays: 30,
       badge: "Institutional Bot",
-      botImage: "https://images.unsplash.com/photo-1642543492481-44e81e3914a7?w=200&auto=format&fit=crop&q=80",
+      latency: "2ms Latency",
+      aiScore: "99.7%",
+      colorScheme: "emerald",
       description: "Institutional HFT liquidity engine backed by Level 3 Insurance Aegis shield.",
     },
     {
@@ -67,7 +89,9 @@ export function InvestmentsView() {
       monthlyPercent: 18.5,
       durationDays: 30,
       badge: "Ultra Sovereign Bot",
-      botImage: "https://images.unsplash.com/photo-1639762681057-408e52192e55?w=200&auto=format&fit=crop&q=80",
+      latency: "0.8ms Ultra HFT",
+      aiScore: "99.9%",
+      colorScheme: "amber",
       description: "Elite sovereign quant algorithm executing cross-chain MEV liquidity sweeps.",
     },
   ];
@@ -133,6 +157,29 @@ export function InvestmentsView() {
     }
   };
 
+  const renderBotGraphic = (scheme: string, popular?: boolean) => {
+    return (
+      <div className="relative h-28 w-full rounded-2xl bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex items-center justify-center p-3 overflow-hidden group-hover:border-slate-700 transition">
+        {/* Radar Background grid */}
+        <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:12px_12px] opacity-30" />
+
+        {/* Central Glowing Bot Avatar */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="relative flex items-center justify-center h-12 w-12 rounded-2xl bg-slate-900 border border-slate-700 shadow-xl group-hover:scale-110 transition duration-300">
+            <Bot className="w-7 h-7 text-amber-400" />
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+          </div>
+          <span className="text-[10px] font-black uppercase text-slate-300 tracking-wider mt-1.5 flex items-center gap-1">
+            <Cpu className="w-3 h-3 text-emerald-400" /> QUANT 24/7 ACTIVE
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
       <DepositModal
@@ -142,14 +189,27 @@ export function InvestmentsView() {
         featureName={currentPlan.type}
       />
 
-      <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold text-white flex items-center gap-2">
-          <Bot className="w-8 h-8 text-amber-400" />
-          <span>Automated Quant Yield Bots</span>
-        </h1>
-        <p className="text-xs md:text-sm text-slate-400">
-          Deploy automated AI quant bots to generate continuous daily compounding yield.
-        </p>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-amber-500/30 p-6 sm:p-8 rounded-3xl shadow-2xl">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400">
+              <Bot className="w-7 h-7" />
+            </div>
+            <span>Institutional Quant Yield Bots</span>
+          </h1>
+          <p className="text-xs md:text-sm text-slate-400 mt-2 max-w-2xl">
+            Select an automated AI quant algorithm to execute high-frequency arbitrage across crypto, forex, and commodities with guaranteed daily yield payouts.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 bg-slate-950 px-4 py-3 rounded-2xl border border-slate-800">
+          <Activity className="w-5 h-5 text-emerald-400 animate-pulse" />
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Live Engine Status</p>
+            <p className="text-xs font-black text-emerald-400">5 BOT ENGINES ONLINE</p>
+          </div>
+        </div>
       </div>
 
       {/* Plan Selection Cards */}
@@ -163,23 +223,20 @@ export function InvestmentsView() {
                 setSelectedPlanIndex(idx);
                 setCustomAmount(plan.min);
               }}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden group ${
+              className={`p-4 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden group ${
                 isSelected
-                  ? "border-amber-500 bg-amber-500/15 ring-2 ring-amber-500/30 shadow-xl shadow-amber-500/10"
+                  ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30 shadow-2xl shadow-amber-500/20"
                   : "border-slate-800 bg-slate-900/80 hover:border-slate-700"
               }`}
             >
-              <div className="relative h-28 w-full rounded-xl overflow-hidden mb-2">
-                <img
-                  src={plan.botImage}
-                  alt={plan.type}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
-                <Badge variant={isSelected ? "gold" : "info"} className="absolute top-2 left-2 text-[9px] shadow-lg">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={isSelected ? "gold" : "info"} className="text-[9px] shadow-lg">
                   {plan.badge}
                 </Badge>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">{plan.latency}</span>
               </div>
+
+              {renderBotGraphic(plan.colorScheme, plan.popular)}
 
               <div>
                 <h3 className="font-bold text-slate-100 text-xs">{plan.type}</h3>
@@ -189,9 +246,9 @@ export function InvestmentsView() {
                 <p className="text-[10px] text-slate-400 mt-1.5 leading-tight line-clamp-2">{plan.description}</p>
               </div>
 
-              <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-300">
-                <p>Min: <strong>${plan.min.toLocaleString()}</strong></p>
-                <p>Period: <strong>{plan.durationDays} Days</strong></p>
+              <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 flex justify-between items-center">
+                <span>Min: <strong className="text-amber-300">${plan.min.toLocaleString()}</strong></span>
+                <span>Term: <strong className="text-white">{plan.durationDays}D</strong></span>
               </div>
             </div>
           );
@@ -225,7 +282,7 @@ export function InvestmentsView() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800 text-center">
+            <div className="grid grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
               <div>
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block">Daily Return</span>
                 <span className="text-lg font-bold text-emerald-400">{formatCurrency(dailyYield)}</span>
@@ -247,10 +304,10 @@ export function InvestmentsView() {
               size="lg"
               onClick={handleStartInvestment}
               disabled={loading}
-              className="w-full font-bold flex items-center justify-center gap-2"
+              className="w-full font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 hover:brightness-110 cursor-pointer"
             >
               <Zap className="w-5 h-5 text-slate-950" />
-              <span>{loading ? "Activating..." : `Activate $${effectiveAmount} Portfolio`}</span>
+              <span>{loading ? "Activating Quant Bot..." : `Deploy ${currentPlan.type} ($${effectiveAmount})`}</span>
             </Button>
           </CardContent>
         </Card>
@@ -281,7 +338,7 @@ export function InvestmentsView() {
             <Button
               variant="outline"
               onClick={() => setCurrentTab("wallet")}
-              className="w-full text-xs"
+              className="w-full text-xs cursor-pointer"
             >
               + Deposit More Funds
             </Button>
@@ -292,7 +349,7 @@ export function InvestmentsView() {
       {/* Active Investments List */}
       <Card>
         <CardHeader>
-          <CardTitle>Active & Past Investment Portfolios</CardTitle>
+          <CardTitle>Active & Historical Quant Portfolios</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -311,7 +368,7 @@ export function InvestmentsView() {
                 {activeInvestments.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-6 text-center text-slate-500">
-                      No active investments yet. Activate a plan above!
+                      No active quant portfolios yet. Deploy a bot above!
                     </td>
                   </tr>
                 ) : (

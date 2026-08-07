@@ -51,6 +51,8 @@ export interface User {
   referralEarnings?: number;
   referredBy?: string | null;
   insuranceLevel: number;
+  lastFreeSpinDate?: string | null;
+  lastDailyBonusDate?: string | null;
   linkedSocials?: {
     facebook?: string | null;
     twitter?: string | null;

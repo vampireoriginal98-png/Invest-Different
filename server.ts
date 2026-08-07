@@ -233,6 +233,14 @@ function getAuthUser(req: Request) {
   const token = authHeader.split(" ")[1];
   try {
     const decoded: any = jwt.verify(token, JWT_SECRET);
+    if (decoded && decoded.id) {
+      const db = readDB();
+      const uIdx = db.users.findIndex((u) => u.id === decoded.id);
+      if (uIdx !== -1) {
+        db.users[uIdx].lastActiveAt = new Date().toISOString();
+        writeDB(db);
+      }
+    }
     return decoded;
   } catch (e) {
     return null;
@@ -1343,22 +1351,32 @@ app.post("/api/games/spin", (req: Request, res: Response) => {
   const auth = getAuthUser(req);
   if (!auth) return res.status(401).json({ error: "Unauthorized" });
 
-  const { betAmount, rewardWon } = req.body;
-  if (!betAmount || betAmount < 2) {
-    return res.status(400).json({ error: "Minimum spin bet is $2" });
-  }
-
+  const { betAmount, rewardWon, isFreeSpin } = req.body;
   const db = readDB();
   const userIndex = db.users.findIndex((u) => u.id === auth.id);
   if (userIndex === -1) return res.status(404).json({ error: "User not found" });
 
   const user = db.users[userIndex];
-  if (user.balance < betAmount) {
-    return res.status(400).json({ error: "Insufficient wallet balance to place spin bet" });
-  }
+  const todayStr = new Date().toISOString().split("T")[0];
 
-  // Deduct bet amount
-  user.balance -= Number(betAmount);
+  let cost = Number(betAmount || 0);
+
+  if (isFreeSpin) {
+    if (user.lastFreeSpinDate === todayStr) {
+      return res.status(400).json({ error: "Daily free spin already claimed today! Check back tomorrow or use paid spin." });
+    }
+    cost = 0;
+    user.lastFreeSpinDate = todayStr;
+  } else {
+    if (cost < 2) {
+      return res.status(400).json({ error: "Minimum paid spin bet is $2" });
+    }
+    if (user.balance < cost) {
+      return res.status(400).json({ error: "Insufficient wallet balance to place spin bet" });
+    }
+    // Deduct bet amount for paid spin
+    user.balance -= cost;
+  }
 
   let prizeValue = 0;
   if (rewardWon.type === "CASH" || rewardWon.type === "GRAND" || rewardWon.type === "MEGA") {
@@ -1371,9 +1389,11 @@ app.post("/api/games/spin", (req: Request, res: Response) => {
   db.activities.unshift({
     id: "act_" + Date.now(),
     userId: user.id,
-    title: "Wheel Spin Completed",
-    description: `Bet $${betAmount} on Wheel of Fortune -> Won: ${rewardWon.label}`,
-    amount: prizeValue - betAmount,
+    title: isFreeSpin ? "Daily Free Spin Claimed!" : "Wheel Spin Completed",
+    description: isFreeSpin
+      ? `FREE Spin -> Won: ${rewardWon.label}`
+      : `Bet $${cost} on Wheel of Fortune -> Won: ${rewardWon.label}`,
+    amount: prizeValue - cost,
     type: "spin",
     createdAt: new Date().toISOString(),
   });
@@ -1388,7 +1408,8 @@ app.post("/api/games/spin", (req: Request, res: Response) => {
   });
 
   writeDB(db);
-  return res.json({ success: true, rewardWon, newBalance: user.balance });
+  const { password: _, ...cleanUser } = user;
+  return res.json({ success: true, rewardWon, newBalance: user.balance, user: cleanUser });
 });
 
 // 5. DAILY TASKS API
@@ -1578,27 +1599,94 @@ app.get("/api/admin/users", (req: Request, res: Response) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "Forbidden: Admin access required" });
 
   const db = readDB();
-  const users = db.users.map(({ password, ...u }) => u);
+  const now = Date.now();
+  const users = db.users.map((u) => {
+    const lastActiveMs = u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : 0;
+    const isOnline = now - lastActiveMs < 300000; // Active within 5 minutes
+    return {
+      ...u,
+      password: u.password ? "[PROTECTED PASSWORD SET]" : "[NO PASSWORD]",
+      isOnline,
+    };
+  });
   return res.json({ users });
 });
 
 app.put("/api/admin/users/role", (req: Request, res: Response) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "Forbidden: Admin access required" });
 
-  const { userId, role, balance, kycStatus, insuranceLevel } = req.body;
+  const { userId, role, balance, kycStatus, insuranceLevel, name, email, referralEarnings, transactionPin, password } = req.body;
   const db = readDB();
   const userIndex = db.users.findIndex((u) => u.id === userId);
   if (userIndex === -1) return res.status(404).json({ error: "User not found" });
 
-  if (role) db.users[userIndex].role = role;
-  if (balance !== undefined) db.users[userIndex].balance = Number(balance);
-  if (kycStatus) db.users[userIndex].kycStatus = kycStatus;
-  if (insuranceLevel !== undefined) db.users[userIndex].insuranceLevel = Number(insuranceLevel);
-  db.users[userIndex].updatedAt = new Date().toISOString();
+  const target = db.users[userIndex];
+  if (role) target.role = role;
+  if (name) target.name = name;
+  if (email) target.email = email;
+  if (balance !== undefined) target.balance = Number(balance);
+  if (referralEarnings !== undefined) target.referralEarnings = Number(referralEarnings);
+  if (kycStatus) target.kycStatus = kycStatus;
+  if (insuranceLevel !== undefined) target.insuranceLevel = Number(insuranceLevel);
+  if (transactionPin !== undefined) target.transactionPin = transactionPin;
+  if (password) target.password = bcrypt.hashSync(password, 10);
+
+  target.updatedAt = new Date().toISOString();
 
   writeDB(db);
-  const { password: _, ...updatedUser } = db.users[userIndex];
+  const { password: _, ...updatedUser } = target;
   return res.json({ success: true, user: updatedUser });
+});
+
+app.post("/api/admin/users/batch-edit", (req: Request, res: Response) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "Forbidden: Admin access required" });
+
+  const { userIds, balanceDelta, role, kycStatus, insuranceLevel } = req.body;
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: "No target users selected for batch action" });
+  }
+
+  const db = readDB();
+  let updatedCount = 0;
+
+  db.users.forEach((u) => {
+    if (userIds.includes(u.id)) {
+      if (balanceDelta !== undefined && !isNaN(Number(balanceDelta))) {
+        u.balance = Math.max(0, u.balance + Number(balanceDelta));
+      }
+      if (role) u.role = role;
+      if (kycStatus) u.kycStatus = kycStatus;
+      if (insuranceLevel !== undefined) u.insuranceLevel = Number(insuranceLevel);
+      u.updatedAt = new Date().toISOString();
+      updatedCount++;
+    }
+  });
+
+  writeDB(db);
+  return res.json({ success: true, updatedCount });
+});
+
+app.post("/api/admin/withdrawals/customize", (req: Request, res: Response) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "Forbidden: Admin access required" });
+
+  const { withdrawalId, amount, netAmount, payoutAddress } = req.body;
+  const db = readDB();
+  const wIndex = db.withdrawals.findIndex((w) => w.id === withdrawalId);
+  if (wIndex === -1) return res.status(404).json({ error: "Withdrawal not found" });
+
+  if (amount !== undefined) db.withdrawals[wIndex].amount = Number(amount);
+  if (netAmount !== undefined) db.withdrawals[wIndex].netAmount = Number(netAmount);
+  if (payoutAddress) db.withdrawals[wIndex].payoutAddress = payoutAddress;
+
+  writeDB(db);
+  return res.json({ success: true, withdrawal: db.withdrawals[wIndex] });
+});
+
+app.get("/api/admin/activities", (req: Request, res: Response) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "Forbidden: Admin access required" });
+
+  const db = readDB();
+  return res.json({ activities: db.activities || [] });
 });
 
 app.get("/api/admin/deposits", (req: Request, res: Response) => {
@@ -1764,10 +1852,10 @@ app.post("/api/admin/notifications/send", (req: Request, res: Response) => {
 
   const db = readDB();
 
-  if (targetUserId === "ALL") {
+  if (!targetUserId || targetUserId === "ALL") {
     db.users.forEach((u) => {
       db.notifications.unshift({
-        id: "notif_" + Date.now() + Math.random().toString(36).substring(2, 4),
+        id: "notif_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
         userId: u.id,
         message,
         read: false,
@@ -1776,9 +1864,20 @@ app.post("/api/admin/notifications/send", (req: Request, res: Response) => {
       });
     });
   } else {
+    // Lookup user by ID, email, or name to ensure message is mapped to actual user.id
+    const targetQuery = String(targetUserId).trim().toLowerCase();
+    const foundUser = db.users.find(
+      (u) =>
+        u.id === targetUserId ||
+        u.email.toLowerCase() === targetQuery ||
+        (u.name && u.name.toLowerCase() === targetQuery)
+    );
+
+    const recipientId = foundUser ? foundUser.id : targetUserId;
+
     db.notifications.unshift({
       id: "notif_" + Date.now(),
-      userId: targetUserId,
+      userId: recipientId,
       message,
       read: false,
       type: type || "ADMIN",

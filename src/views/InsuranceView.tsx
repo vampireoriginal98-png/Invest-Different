@@ -2,16 +2,22 @@ import React, { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { DEFAULT_INSURANCE_TIERS } from "@/lib/insurance";
 import { Shield, ShieldCheck, Zap, AlertCircle, CheckCircle2 } from "lucide-react";
+import { DepositModal } from "@/components/ui/DepositModal";
 import toast from "react-hot-toast";
 
 export function InsuranceView() {
   const { user, token, updateBalance, setUser } = useAuthStore();
   const [loading, setLoading] = useState<number | null>(null);
+  const [depositModalData, setDepositModalData] = useState<{ open: boolean; level: number; cost: number }>({
+    open: false,
+    level: 1,
+    cost: 100,
+  });
 
   const handlePurchase = async (level: number, cost: number) => {
     if (!user) return;
     if (user.balance < cost) {
-      toast.error(`Insufficient balance. Requires $${cost.toFixed(2)}`);
+      setDepositModalData({ open: true, level, cost });
       return;
     }
 
@@ -44,7 +50,14 @@ export function InsuranceView() {
   const currentLevel = user?.insuranceLevel || 0;
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      <DepositModal
+        isOpen={depositModalData.open}
+        onClose={() => setDepositModalData({ ...depositModalData, open: false })}
+        requiredAmount={depositModalData.cost}
+        featureName={`Level ${depositModalData.level} Aegis Shield Activation`}
+      />
+
       {/* Header Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border border-amber-500/30 p-8 shadow-2xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -102,7 +115,16 @@ export function InsuranceView() {
                   )}
                 </div>
 
-                <h3 className="text-xl font-bold text-white mb-1">Level {tier.level} Shield</h3>
+                <div className="flex items-center gap-3 my-2">
+                  <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                    <Shield className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Level {tier.level} Aegis</h3>
+                    <p className="text-[10px] text-emerald-400 font-mono font-semibold">Tier {tier.level} Shield</p>
+                  </div>
+                </div>
+
                 <div className="text-3xl font-black text-amber-400 my-3">
                   ${tier.cost}{" "}
                   <span className="text-xs font-normal text-slate-400">one-time</span>
@@ -118,6 +140,10 @@ export function InsuranceView() {
                   <div className="flex justify-between">
                     <span className="text-slate-400">Yield Protection</span>
                     <span className="font-bold text-amber-300">{tier.profitProtection}% Shielded</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Liquidation Buffer</span>
+                    <span className="font-bold text-emerald-400">{tier.level * 25}% Margin Safe</span>
                   </div>
                 </div>
               </div>
@@ -148,6 +174,37 @@ export function InsuranceView() {
             </div>
           );
         })}
+      </div>
+
+      {/* Aegis Protection Benefits Breakdown */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-amber-400" />
+          <span>Aegis Shield Protection Features</span>
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-300">
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+            <p className="font-bold text-amber-400 text-sm">🤖 Bot Yield Shielding</p>
+            <p className="text-slate-400 leading-relaxed">
+              If a Quant Yield Bot experiences abnormal drawdown or market volatility, your Aegis tier automatically offsets negative variance and reimburses protected yields.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+            <p className="font-bold text-emerald-400 text-sm">📈 Equity & ETF Buffer</p>
+            <p className="text-slate-400 leading-relaxed">
+              Protects stock portfolio holdings against severe market drops during earnings reports or macroeconomic shocks, ensuring minimum guaranteed capital return.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+            <p className="font-bold text-blue-400 text-sm">⚡ Instant Automated Claim</p>
+            <p className="text-slate-400 leading-relaxed">
+              No manual claim paperwork required. Claim refunds are calculated instantly by smart contract logic and credited directly to your wallet balance.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -34,6 +34,34 @@
   }
 }
 
+/* Light Theme Overrides */
+html.light {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.light body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.light .bg-slate-950,
+html.light .bg-slate-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .text-white,
+html.light .text-slate-100,
+html.light .text-slate-200 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
 /* Ensure no button cuts off text */
 button, input, select, textarea {
   font-family: inherit;
