@@ -53,13 +53,6 @@ export interface User {
   insuranceLevel: number;
   lastFreeSpinDate?: string | null;
   lastDailyBonusDate?: string | null;
-  linkedSocials?: {
-    facebook?: string | null;
-    twitter?: string | null;
-    tiktok?: string | null;
-    snapchat?: string | null;
-    pinterest?: string | null;
-  };
   createdAt: string;
   updatedAt: string;
 }
@@ -274,13 +267,3 @@ export interface FAQItem {
   answer: string;
 }
 
-export interface SocialLinkRequest {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  platform: "facebook" | "twitter" | "tiktok" | "snapchat" | "pinterest";
-  handleOrUrl: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  createdAt: string;
-}

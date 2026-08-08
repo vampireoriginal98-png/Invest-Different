@@ -52,6 +52,7 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [adminGmail, setAdminGmail] = useState("admin@gmail.com");
   const [forgotSent, setForgotSent] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -61,7 +62,7 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
     e.preventDefault();
     setErrorMsg(null);
     if (!email) {
-      setErrorMsg("Please enter your email address");
+      setErrorMsg("Please enter your account email address");
       return;
     }
     setIsLoading(true);
@@ -69,13 +70,13 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, adminGmail }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to request reset link");
+      if (!res.ok) throw new Error(data.error || "Failed to submit recovery request");
       setForgotSent(true);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to request reset link");
+      setErrorMsg(err.message || "Failed to submit recovery request");
     } finally {
       setIsLoading(false);
     }
@@ -211,11 +212,14 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
           {isForgotPassword ? (
             <div className="space-y-4">
               {forgotSent ? (
-                <div className="text-center space-y-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
-                  <div className="text-3xl">📧</div>
-                  <h3 className="text-sm font-bold text-white">Reset Link Dispatched</h3>
-                  <p className="text-xs text-slate-300">
-                    If an account with <strong>{email}</strong> exists, instructions to reset your password have been sent.
+                <div className="text-center space-y-3 p-5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
+                  <div className="text-3xl">🔐</div>
+                  <h3 className="text-sm font-bold text-white">Password Recovery Request Submitted</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Your password reset ticket for <strong>{email}</strong> has been logged to Admin (<strong>{adminGmail}</strong>).
+                  </p>
+                  <p className="text-[11px] text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl">
+                    💡 Please contact customer service on another account with your ID and email, or wait 3 hours for administrative account verification.
                   </p>
                   <button
                     type="button"
@@ -223,15 +227,15 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
                       setIsForgotPassword(false);
                       setForgotSent(false);
                     }}
-                    className="mt-2 text-xs text-amber-400 font-bold hover:underline"
+                    className="mt-2 text-xs text-amber-400 font-bold hover:underline cursor-pointer"
                   >
-                    Return to Login
+                    Return to Sign In
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleForgotPassword} className="space-y-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Account Email</label>
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Your Account Email / ID</label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                       <input
@@ -244,19 +248,35 @@ export function AuthView({ initialMode = "login", onSuccess }: AuthViewProps) {
                       />
                     </div>
                   </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Admin Support Gmail</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-amber-400 absolute left-3 top-3" />
+                      <input
+                        type="email"
+                        required
+                        value={adminGmail}
+                        onChange={(e) => setAdminGmail(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500/50"
+                        placeholder="admin@gmail.com"
+                      />
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={isLoading}
                     className="w-full gold-gradient py-3.5 rounded-xl text-slate-950 font-black text-xs uppercase tracking-wider hover:scale-[1.01] active:scale-[0.99] transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
                   >
-                    <span>{isLoading ? "Sending..." : "Send Reset Link"}</span>
+                    <span>{isLoading ? "Submitting Request..." : "Submit Password Reset Ticket"}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <div className="text-center">
                     <button
                       type="button"
                       onClick={() => setIsForgotPassword(false)}
-                      className="text-xs text-slate-400 hover:text-white underline"
+                      className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
                     >
                       Back to Sign In
                     </button>

@@ -38,15 +38,6 @@ export function ProfileView() {
   const [confirmTxPassword, setConfirmTxPassword] = useState("");
   const [currentPass, setCurrentPass] = useState("");
   const [newPass, setNewPass] = useState("");
-  
-  // Social Linking
-  const [socials, setSocials] = useState({
-    facebook: user?.linkedSocials?.facebook || "",
-    twitter: user?.linkedSocials?.twitter || "",
-    tiktok: user?.linkedSocials?.tiktok || "",
-    snapchat: user?.linkedSocials?.snapchat || "",
-    pinterest: user?.linkedSocials?.pinterest || "",
-  });
 
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -123,32 +114,6 @@ export function ProfileView() {
       setMsg({ type: "error", text: "Error setting transaction PIN" });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleLinkSocial = async (platform: keyof typeof socials) => {
-    const handleOrUrl = socials[platform];
-    if (!handleOrUrl) return;
-
-    try {
-      const token = localStorage.getItem("invest_token");
-      const res = await fetch("/api/user/social-link", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ platform, handleOrUrl }),
-      });
-
-      const d = await res.json();
-      if (res.ok) {
-        setMsg({ type: "success", text: `Submitted ${String(platform)} for review (+ $5 reward upon admin approval)!` });
-      } else {
-        setMsg({ type: "error", text: d.error || "Failed to submit social link" });
-      }
-    } catch (e) {
-      setMsg({ type: "error", text: "Error submitting social link" });
     }
   };
 
@@ -328,51 +293,6 @@ export function ProfileView() {
               Update Transaction Password
             </button>
           </form>
-        </div>
-      </div>
-
-      {/* Social Media Integration */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center gap-3">
-            <Share2 className="w-5 h-5 text-amber-400" />
-            <div>
-              <h2 className="text-base font-bold text-white uppercase tracking-wider">
-                Social Media Linking
-              </h2>
-              <p className="text-xs text-slate-400">
-                Link your social handles & receive a $5 bonus per approved account!
-              </p>
-            </div>
-          </div>
-          <span className="text-xs font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full">
-            +$5 Bonus / Link
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {(["facebook", "twitter", "tiktok", "snapchat", "pinterest"] as const).map((plat) => (
-            <div key={plat} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
-              <label className="block text-xs font-extrabold text-slate-200 capitalize flex items-center justify-between">
-                <span>{plat} Handle / Profile URL</span>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={socials[plat]}
-                  onChange={(e) => setSocials({ ...socials, [plat]: e.target.value })}
-                  placeholder={`@your${plat}handle`}
-                  className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500/50"
-                />
-                <button
-                  onClick={() => handleLinkSocial(plat)}
-                  className="bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-xl text-xs font-bold transition"
-                >
-                  Link
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>

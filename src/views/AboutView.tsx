@@ -1,13 +1,13 @@
 import React from "react";
-import { Shield, Building2, Globe2, Award, Users, CheckCircle2, TrendingUp, Sparkles, ArrowRight } from "lucide-react";
+import { Shield, Building2, Globe2, Award, Users, CheckCircle2, TrendingUp, Sparkles, ArrowRight, Zap } from "lucide-react";
 
 const TEAM_MEMBERS = [
   {
-    name: "Alistair Vance",
-    role: "Chief Executive Officer",
-    bio: "Former Head of Digital Investment Strategies at London Financial Group. 18+ years experience in algorithmic asset management.",
+    name: "Alistair & Ethan Vance",
+    role: "Founders & Genius Twin Architects",
+    bio: "Outstanding genius twin visionaries from Houston, Texas. Developed high-frequency quantitative arbitrage engines in association with Google AI & Tesla engineering.",
     image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
-    badge: "Co-Founder",
+    badge: "Houston Twins (Founders)",
   },
   {
     name: "Dr. Elena Rostova",
@@ -39,14 +39,37 @@ export function AboutView() {
       <div className="relative rounded-3xl bg-slate-900 border border-amber-500/30 p-8 md:p-12 overflow-hidden text-center space-y-4">
         <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
         <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-bold text-amber-300">
-          <Building2 className="w-4 h-4 text-amber-400" /> Institutional Excellence
+          <Building2 className="w-4 h-4 text-amber-400" /> Houston, Texas Innovation Hub
         </span>
         <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight">
-          Redefining Capital Yield Through Algorithmic Precision
+          Redefining Capital Yield Through Genius Engineering
         </h1>
-        <p className="max-w-2xl mx-auto text-sm md:text-base text-slate-300 leading-relaxed font-normal">
-          Invest Different was founded with a singular objective: democratizing high-tier quantitative asset management, hedge-fund grade arbitrage, and capital protection reserves for global investors.
+        <p className="max-w-3xl mx-auto text-sm md:text-base text-slate-300 leading-relaxed font-normal">
+          Founded by outstanding genius twins from Houston, Texas in association with Google, sponsored by Tesla, SpaceX/X, and premier stock market organizations. "Earn at home is the new future — this isn't a course, but an effort-rewarding quantitative system."
         </p>
+
+        {/* Official Sponsorship Emblems */}
+        <div className="flex flex-wrap items-center justify-center gap-6 pt-4 border-t border-slate-800/80">
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl text-xs font-bold text-white">
+            <span className="text-amber-400 font-black">Google</span>
+            <span className="text-[10px] text-slate-400 uppercase">Associate Partner</span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl text-xs font-bold text-white">
+            <span className="text-rose-400 font-black">Tesla</span>
+            <span className="text-[10px] text-slate-400 uppercase">Strategic Sponsor</span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl text-xs font-bold text-white">
+            <span className="text-slate-100 font-black">X (Twitter)</span>
+            <span className="text-[10px] text-slate-400 uppercase">Viral Distribution</span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl text-xs font-bold text-white">
+            <span className="text-emerald-400 font-black">Houston HQ</span>
+            <span className="text-[10px] text-slate-400 uppercase">Texas, USA</span>
+          </div>
+        </div>
       </div>
 
       {/* Key Metric Highlights */}
@@ -69,10 +92,10 @@ export function AboutView() {
       <div className="space-y-6">
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-black text-white uppercase tracking-wide">
-            Executive Leadership & Quants
+            Executive Leadership & Houston Visionaries
           </h2>
           <p className="text-xs text-slate-400">
-            Guided by veteran hedge fund managers, machine learning architects, and risk specialists.
+            Guided by veteran Houston twin architects, machine learning quant leads, and risk specialists.
           </p>
         </div>
 

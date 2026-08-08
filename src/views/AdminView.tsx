@@ -25,13 +25,12 @@ import { WithdrawalQueue } from "@/components/admin/WithdrawalQueue";
 import { KYCQueue } from "@/components/admin/KYCQueue";
 import { UserTable } from "@/components/admin/UserTable";
 import { NotificationSender } from "@/components/admin/NotificationSender";
-import { SocialLinksQueue } from "@/components/admin/SocialLinksQueue";
 import { formatCurrency } from "@/lib/utils";
 
 export function AdminView() {
   const { user, setCurrentTab, setSystemSetting, fetchSettings: refreshStoreSettings } = useAuthStore();
   const [activeTab, setActiveTab] = useState<
-    "overview" | "deposits" | "withdrawals" | "kyc" | "users" | "socials" | "messages" | "content" | "settings"
+    "overview" | "deposits" | "withdrawals" | "kyc" | "users" | "messages" | "content" | "settings"
   >("overview");
   const [previewAsUser, setPreviewAsUser] = useState(false);
 
@@ -285,7 +284,6 @@ export function AdminView() {
             <option value="deposits">💰 Deposits Queue ({stats.pendingDeposits})</option>
             <option value="withdrawals">💸 Withdrawals Queue ({stats.pendingWithdrawals})</option>
             <option value="kyc">📋 KYC Approvals ({stats.pendingKyc})</option>
-            <option value="socials">📱 Social Link Verification</option>
             <option value="users">👥 User Database</option>
             <option value="messages">💬 Direct User Messages</option>
             <option value="settings">⚙️ System Wallet & Settings</option>
@@ -299,7 +297,6 @@ export function AdminView() {
             { id: "deposits", label: `Deposits (${stats.pendingDeposits})`, icon: Wallet, alert: stats.pendingDeposits > 0 },
             { id: "withdrawals", label: `Withdrawals (${stats.pendingWithdrawals})`, icon: ArrowUpRight, alert: stats.pendingWithdrawals > 0 },
             { id: "kyc", label: `KYC Review (${stats.pendingKyc})`, icon: ShieldCheck, alert: stats.pendingKyc > 0 },
-            { id: "socials", label: "Social Verifications", icon: Share2 },
             { id: "users", label: "User Database", icon: Users },
             { id: "messages", label: "Direct Messages", icon: MessageSquare },
             { id: "settings", label: "Wallet & System", icon: Settings },
@@ -389,12 +386,6 @@ export function AdminView() {
       {activeTab === "kyc" && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
           <KYCQueue />
-        </div>
-      )}
-
-      {activeTab === "socials" && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-          <SocialLinksQueue />
         </div>
       )}
 
