@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
+import toast from "react-hot-toast";
 import {
   BarChart3,
   Users,
@@ -459,14 +460,41 @@ export function AdminView() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">USDT Barcode QR Code Image URL (Optional - leaves blank to auto-generate QR)</label>
-                <input
-                  type="text"
-                  value={settings.usdtQrCode || ""}
-                  onChange={(e) => setSettings({ ...settings, usdtQrCode: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
-                  placeholder="https://... or data:image/png;base64,..."
-                />
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">USDT Barcode QR Code Image URL or Upload Image File</label>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <input
+                    type="text"
+                    value={settings.usdtQrCode || ""}
+                    onChange={(e) => setSettings({ ...settings, usdtQrCode: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
+                    placeholder="https://... or data:image/png;base64,..."
+                  />
+                  <label className="w-full sm:w-auto px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs cursor-pointer whitespace-nowrap text-center">
+                    Upload QR File
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setSettings((prev: any) => ({ ...prev, usdtQrCode: reader.result as string }));
+                            toast.success("USDT QR Code image loaded!");
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {settings.usdtQrCode && (
+                  <div className="mt-2 flex items-center gap-3 p-2 bg-slate-900 rounded-xl border border-slate-800">
+                    <img src={settings.usdtQrCode} alt="USDT QR" className="w-14 h-14 object-contain rounded-lg border border-slate-700 bg-white" />
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold">Custom USDT QR Code Active</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -484,14 +512,41 @@ export function AdminView() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">BTC Barcode QR Code Image URL (Optional)</label>
-                <input
-                  type="text"
-                  value={settings.btcQrCode || ""}
-                  onChange={(e) => setSettings({ ...settings, btcQrCode: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
-                  placeholder="https://... or data:image/png;base64,..."
-                />
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">BTC Barcode QR Code Image URL or Upload Image File</label>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <input
+                    type="text"
+                    value={settings.btcQrCode || ""}
+                    onChange={(e) => setSettings({ ...settings, btcQrCode: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
+                    placeholder="https://... or data:image/png;base64,..."
+                  />
+                  <label className="w-full sm:w-auto px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs cursor-pointer whitespace-nowrap text-center">
+                    Upload QR File
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setSettings((prev: any) => ({ ...prev, btcQrCode: reader.result as string }));
+                            toast.success("BTC QR Code image loaded!");
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {settings.btcQrCode && (
+                  <div className="mt-2 flex items-center gap-3 p-2 bg-slate-900 rounded-xl border border-slate-800">
+                    <img src={settings.btcQrCode} alt="BTC QR" className="w-14 h-14 object-contain rounded-lg border border-slate-700 bg-white" />
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold">Custom BTC QR Code Active</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -509,14 +564,41 @@ export function AdminView() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">ETH Barcode QR Code Image URL (Optional)</label>
-                <input
-                  type="text"
-                  value={settings.ethQrCode || ""}
-                  onChange={(e) => setSettings({ ...settings, ethQrCode: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
-                  placeholder="https://... or data:image/png;base64,..."
-                />
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">ETH Barcode QR Code Image URL or Upload Image File</label>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <input
+                    type="text"
+                    value={settings.ethQrCode || ""}
+                    onChange={(e) => setSettings({ ...settings, ethQrCode: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 font-mono"
+                    placeholder="https://... or data:image/png;base64,..."
+                  />
+                  <label className="w-full sm:w-auto px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs cursor-pointer whitespace-nowrap text-center">
+                    Upload QR File
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setSettings((prev: any) => ({ ...prev, ethQrCode: reader.result as string }));
+                            toast.success("ETH QR Code image loaded!");
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {settings.ethQrCode && (
+                  <div className="mt-2 flex items-center gap-3 p-2 bg-slate-900 rounded-xl border border-slate-800">
+                    <img src={settings.ethQrCode} alt="ETH QR" className="w-14 h-14 object-contain rounded-lg border border-slate-700 bg-white" />
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold">Custom ETH QR Code Active</span>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -5,103 +5,42 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { DepositModal } from "@/components/ui/DepositModal";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { TrendingUp, Sparkles, Check, Calculator, ShieldCheck, Zap, Bot, ArrowRight, Cpu, Activity, Gauge } from "lucide-react";
+import { TrendingUp, Sparkles, Check, Calculator, ShieldCheck, Zap, Bot, ArrowRight, Cpu, Activity, Gauge, Lock, ShieldAlert } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { QUANT_BOT_CATALOG, QuantBotTier } from "@/data/botCatalog";
 import toast from "react-hot-toast";
 import confetti from "canvas-confetti";
 
-interface BotPlan {
-  type: string;
-  min: number;
-  max: number;
-  monthlyPercent: number;
-  durationDays: number;
-  badge: string;
-  popular?: boolean;
-  latency: string;
-  aiScore: string;
-  colorScheme: "cyan" | "indigo" | "gold" | "emerald" | "amber";
-  description: string;
-}
-
 export function InvestmentsView() {
   const { user, updateBalance, setCurrentTab } = useAuthStore();
-  const [selectedPlanIndex, setSelectedPlanIndex] = useState(2); // Gold by default
+  const [selectedBotId, setSelectedBotId] = useState<string>(QUANT_BOT_CATALOG[3].id); // Silver/Gold default
   const [customAmount, setCustomAmount] = useState<number>(1000);
   const [loading, setLoading] = useState(false);
+  const [harvestingId, setHarvestingId] = useState<string | null>(null);
   const [activeInvestments, setActiveInvestments] = useState<any[]>([]);
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<"ALL" | "STARTER" | "HIGH_YIELD" | "VIP" | "SOVEREIGN">("ALL");
 
-  const plans: BotPlan[] = [
-    {
-      type: "Bronze Starter Bot",
-      min: 50,
-      max: 249,
-      monthlyPercent: 8.5,
-      durationDays: 30,
-      badge: "Beginner Bot",
-      latency: "24ms Latency",
-      aiScore: "96.2%",
-      colorScheme: "cyan",
-      description: "Low-frequency arbitrage trading bot ideal for testing daily yield execution.",
-    },
-    {
-      type: "Silver Growth Bot",
-      min: 250,
-      max: 999,
-      monthlyPercent: 10.5,
-      durationDays: 30,
-      badge: "Steady Bot",
-      latency: "14ms Latency",
-      aiScore: "97.8%",
-      colorScheme: "indigo",
-      description: "Multi-exchange orderbook engine producing continuous 24-hour yield compounding.",
-    },
-    {
-      type: "Gold Prime Quant Bot",
-      min: 1000,
-      max: 4999,
-      monthlyPercent: 13.5,
-      durationDays: 30,
-      badge: "Most Popular Bot",
-      popular: true,
-      latency: "4ms Latency",
-      aiScore: "99.1%",
-      colorScheme: "gold",
-      description: "High-frequency triangular arbitrage engine optimized for maximum daily yield.",
-    },
-    {
-      type: "Platinum VIP Bot",
-      min: 5000,
-      max: 19999,
-      monthlyPercent: 16.0,
-      durationDays: 30,
-      badge: "Institutional Bot",
-      latency: "2ms Latency",
-      aiScore: "99.7%",
-      colorScheme: "emerald",
-      description: "Institutional HFT liquidity engine backed by Level 3 Insurance Aegis shield.",
-    },
-    {
-      type: "Diamond Sovereign Bot",
-      min: 20000,
-      max: 100000,
-      monthlyPercent: 18.5,
-      durationDays: 30,
-      badge: "Ultra Sovereign Bot",
-      latency: "0.8ms Ultra HFT",
-      aiScore: "99.9%",
-      colorScheme: "amber",
-      description: "Elite sovereign quant algorithm executing cross-chain MEV liquidity sweeps.",
-    },
-  ];
+  const currentPlan: QuantBotTier = QUANT_BOT_CATALOG.find((b) => b.id === selectedBotId) || QUANT_BOT_CATALOG[3];
 
-  const currentPlan = plans[selectedPlanIndex];
+  const filteredBots = QUANT_BOT_CATALOG.filter((b) => {
+    if (categoryFilter === "STARTER") return b.tierNumber <= 3;
+    if (categoryFilter === "HIGH_YIELD") return b.tierNumber >= 4 && b.tierNumber <= 7;
+    if (categoryFilter === "VIP") return b.tierNumber >= 8 && b.tierNumber <= 11;
+    if (categoryFilter === "SOVEREIGN") return b.tierNumber >= 12;
+    return true;
+  });
 
-  // Calculate projected yield
+  // Calculate projected yields for the calculator
   const effectiveAmount = Math.max(customAmount || 0, currentPlan.min);
   const totalProfit = (effectiveAmount * currentPlan.monthlyPercent) / 100;
   const dailyYield = totalProfit / currentPlan.durationDays;
+  const hourlyYield = totalProfit / (currentPlan.durationDays * 24);
+
+  // Concurrency capacity calculations
+  const activeCount = activeInvestments.length;
+  const maxSlotsAllowed = currentPlan.maxConcurrentAllowed;
+  const remainingSlots = Math.max(0, maxSlotsAllowed - activeCount);
 
   const fetchInvestments = async () => {
     try {
@@ -147,13 +86,37 @@ export function InvestmentsView() {
       if (!res.ok) throw new Error(data.error || "Failed to start investment");
 
       confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
-      toast.success(`🤖 ${currentPlan.type} activated successfully! Daily yield started.`);
+      toast.success(`🤖 ${currentPlan.type} activated! 30-day quantitative yield loop is live.`);
       updateBalance(data.newBalance);
       fetchInvestments();
     } catch (err: any) {
       toast.error(err.message || "Failed to start investment");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleHarvestYield = async (invId: string) => {
+    setHarvestingId(invId);
+    try {
+      const res = await fetch(`/api/investments/claim-yield/${invId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("invest_token")}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to harvest yield");
+
+      confetti({ particleCount: 80, spread: 80, origin: { y: 0.6 } });
+      toast.success(`🌾 Harvested +$${data.harvestedAmount.toFixed(2)} yield directly into profile balance!`);
+      updateBalance(data.newBalance);
+      fetchInvestments();
+    } catch (err: any) {
+      toast.error(err.message || "No claimable yield available right now.");
+    } finally {
+      setHarvestingId(null);
     }
   };
 
@@ -165,8 +128,8 @@ export function InvestmentsView() {
 
         {/* Central Glowing Bot Avatar */}
         <div className="relative z-10 flex flex-col items-center">
-          <div className="relative flex items-center justify-center h-12 w-12 rounded-2xl bg-slate-900 border border-slate-700 shadow-xl group-hover:scale-110 transition duration-300">
-            <Bot className="w-7 h-7 text-amber-400" />
+          <div className="relative flex items-center justify-center h-12 w-12 rounded-2xl bg-slate-900 border border-amber-600/40 shadow-xl group-hover:scale-110 transition duration-300">
+            <Bot className="w-7 h-7 text-amber-500" />
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
@@ -181,7 +144,7 @@ export function InvestmentsView() {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
       <DepositModal
         isOpen={showDepositModal}
         onClose={() => setShowDepositModal(false)}
@@ -190,78 +153,146 @@ export function InvestmentsView() {
       />
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-amber-500/30 p-6 sm:p-8 rounded-3xl shadow-2xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-amber-600/40 p-6 sm:p-8 rounded-3xl shadow-2xl backdrop-blur-md">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400">
+            <div className="p-2.5 rounded-2xl bg-amber-950/60 border border-amber-600/50 text-amber-500">
               <Bot className="w-7 h-7" />
             </div>
-            <span>Institutional Quant Yield Bots</span>
+            <span>30-Day Quantitative Yield Bot Hub</span>
           </h1>
           <p className="text-xs md:text-sm text-slate-400 mt-2 max-w-2xl">
-            Select an automated AI quant algorithm to execute high-frequency arbitrage across crypto, forex, and commodities with guaranteed daily yield payouts.
+            Deploy automated high-frequency arbitrage bots for a <strong>30-day (720-hour) continuous execution cycle</strong>. Yields accumulate hourly and can be harvested straight into your profile balance at any moment.
           </p>
         </div>
 
         <div className="flex items-center gap-3 bg-slate-950 px-4 py-3 rounded-2xl border border-slate-800">
           <Activity className="w-5 h-5 text-emerald-400 animate-pulse" />
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">Live Engine Status</p>
-            <p className="text-xs font-black text-emerald-400">5 BOT ENGINES ONLINE</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">30-Day Execution Engine</p>
+            <p className="text-xs font-black text-emerald-400">720 HOURS CONTINUOUS RUN</p>
           </div>
         </div>
       </div>
 
-      {/* Plan Selection Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {plans.map((plan, idx) => {
-          const isSelected = selectedPlanIndex === idx;
-          return (
-            <div
-              key={idx}
-              onClick={() => {
-                setSelectedPlanIndex(idx);
-                setCustomAmount(plan.min);
-              }}
-              className={`p-4 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden group ${
-                isSelected
-                  ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30 shadow-2xl shadow-amber-500/20"
-                  : "border-slate-800 bg-slate-900/80 hover:border-slate-700"
+      {/* Tier Category Filters & Concurrency Indicator */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 p-4 rounded-2xl border border-slate-800">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setCategoryFilter("ALL")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                categoryFilter === "ALL"
+                  ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
               }`}
             >
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant={isSelected ? "gold" : "info"} className="text-[9px] shadow-lg">
-                  {plan.badge}
-                </Badge>
-                <span className="text-[10px] font-mono text-emerald-400 font-bold">{plan.latency}</span>
-              </div>
+              All 15 Quant Bots
+            </button>
+            <button
+              onClick={() => setCategoryFilter("STARTER")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                categoryFilter === "STARTER"
+                  ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
+              }`}
+            >
+              Starter Tiers (1 - 3)
+            </button>
+            <button
+              onClick={() => setCategoryFilter("HIGH_YIELD")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                categoryFilter === "HIGH_YIELD"
+                  ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
+              }`}
+            >
+              High-Yield Quant (4 - 7)
+            </button>
+            <button
+              onClick={() => setCategoryFilter("VIP")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                categoryFilter === "VIP"
+                  ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
+              }`}
+            >
+              VIP Institutional (8 - 11)
+            </button>
+            <button
+              onClick={() => setCategoryFilter("SOVEREIGN")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                categoryFilter === "SOVEREIGN"
+                  ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                  : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
+              }`}
+            >
+              Sovereign Apex (12 - 15)
+            </button>
+          </div>
 
-              {renderBotGraphic(plan.colorScheme, plan.popular)}
+          <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800">
+            <Gauge className="w-4 h-4 text-emerald-400" />
+            <span>Bot Capacity: {activeCount} / {currentPlan.maxConcurrentAllowed} Active Slots</span>
+            {remainingSlots > 0 && (
+              <span className="text-[10px] text-amber-400 font-semibold bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-600/30">
+                + You can rent {remainingSlots} more!
+              </span>
+            )}
+          </div>
+        </div>
 
-              <div>
-                <h3 className="font-bold text-slate-100 text-xs">{plan.type}</h3>
-                <div className="text-xl font-black text-emerald-400 mt-1">
-                  +{plan.monthlyPercent}% <span className="text-[10px] font-normal text-slate-400">/ mo</span>
+        {/* Plan Selection Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {filteredBots.map((plan) => {
+            const isSelected = selectedBotId === plan.id;
+            return (
+              <div
+                key={plan.id}
+                onClick={() => {
+                  setSelectedBotId(plan.id);
+                  setCustomAmount(plan.min);
+                }}
+                className={`p-4 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden group ${
+                  isSelected
+                    ? "border-amber-600 bg-amber-950/40 ring-2 ring-amber-600/30 shadow-2xl shadow-amber-950/50"
+                    : "border-slate-800 bg-slate-900/80 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <Badge variant={isSelected ? "gold" : "info"} className="text-[8px] px-2 py-0.5 shadow-lg">
+                    T{plan.tierNumber} • {plan.badge}
+                  </Badge>
+                  <span className="text-[9px] font-mono text-emerald-400 font-bold">{plan.latency}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1.5 leading-tight line-clamp-2">{plan.description}</p>
-              </div>
 
-              <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 flex justify-between items-center">
-                <span>Min: <strong className="text-amber-300">${plan.min.toLocaleString()}</strong></span>
-                <span>Term: <strong className="text-white">{plan.durationDays}D</strong></span>
+                {renderBotGraphic(plan.colorScheme, plan.popular)}
+
+                <div>
+                  <h3 className="font-bold text-slate-100 text-xs truncate">{plan.type}</h3>
+                  <div className="text-lg font-black text-emerald-400 mt-1">
+                    +{plan.monthlyPercent}% <span className="text-[9px] font-normal text-slate-400">/ 30D</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-tight line-clamp-2">{plan.description}</p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 flex justify-between items-center">
+                  <span>Min: <strong className="text-amber-400">${plan.min.toLocaleString()}</strong></span>
+                  <span className="text-[9px] text-slate-400 font-medium">Slots: <strong className="text-white">{plan.maxConcurrentAllowed}</strong></span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Investment Calculator & Activation */}
+      {/* Investment Calculator & Detailed Return Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 border-amber-500/30 bg-slate-900/90">
+        <Card className="lg:col-span-2 border-amber-600/40 bg-slate-900/90 shadow-2xl">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-amber-400" />
-              <CardTitle>Yield Return Calculator: {currentPlan.type}</CardTitle>
+              <Calculator className="w-5 h-5 text-amber-500" />
+              <CardTitle>Detailed 30-Day Bot Yield Breakdown: {currentPlan.type}</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -275,28 +306,40 @@ export function InvestmentsView() {
                 max={currentPlan.max}
                 value={customAmount}
                 onChange={(e) => setCustomAmount(Number(e.target.value))}
-                className="text-lg font-bold text-amber-300"
+                className="text-lg font-bold text-amber-400 bg-slate-950 border-slate-800"
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Allowed capital range for {currentPlan.type}: ${currentPlan.min} to ${currentPlan.max}
+              <p className="text-[11px] text-slate-400 mt-1">
+                Capital range for {currentPlan.type}: ${currentPlan.min.toLocaleString()} to ${currentPlan.max.toLocaleString()}
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Daily Return</span>
-                <span className="text-lg font-bold text-emerald-400">{formatCurrency(dailyYield)}</span>
+            {/* Comprehensive Metrics Breakdown Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Run Duration</span>
+                <span className="text-sm font-black text-white">30 Days (720 hrs)</span>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">30-Day Net Profit</span>
-                <span className="text-lg font-bold text-emerald-400">{formatCurrency(totalProfit)}</span>
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Hourly Credit</span>
+                <span className="text-sm font-black text-emerald-400">{formatCurrency(hourlyYield)} / hr</span>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Payout</span>
-                <span className="text-lg font-bold text-amber-300">
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Daily Yield Rate</span>
+                <span className="text-sm font-black text-emerald-400">{formatCurrency(dailyYield)} / day</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-amber-600/30">
+                <span className="text-[10px] text-amber-400 uppercase font-bold block">30-Day Total Return</span>
+                <span className="text-sm font-black text-amber-400">
                   {formatCurrency(effectiveAmount + totalProfit)}
                 </span>
               </div>
+            </div>
+
+            <div className="p-3 bg-amber-950/30 border border-amber-600/30 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>
+                <strong>Guaranteed Execution:</strong> 100% of principal capital (${effectiveAmount.toLocaleString()}) is automatically unlocked & refunded at 30-day maturity, while yields accumulate hourly!
+              </span>
             </div>
 
             <Button
@@ -304,90 +347,131 @@ export function InvestmentsView() {
               size="lg"
               onClick={handleStartInvestment}
               disabled={loading}
-              className="w-full font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 hover:brightness-110 cursor-pointer"
+              className="w-full gold-gradient font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-amber-950/40 hover:brightness-110 cursor-pointer text-slate-950"
             >
               <Zap className="w-5 h-5 text-slate-950" />
-              <span>{loading ? "Activating Quant Bot..." : `Deploy ${currentPlan.type} ($${effectiveAmount})`}</span>
+              <span>{loading ? "Initializing 30-Day Quant Bot..." : `Deploy ${currentPlan.type} ($${effectiveAmount.toLocaleString()})`}</span>
             </Button>
           </CardContent>
         </Card>
 
         {/* User Balance Info */}
-        <Card className="border-slate-800 bg-slate-900/90 flex flex-col justify-between">
+        <Card className="border-slate-800 bg-slate-900/90 flex flex-col justify-between shadow-2xl">
           <CardHeader>
-            <CardTitle className="text-lg">Your Wallet Status</CardTitle>
+            <CardTitle className="text-lg">Your Profile Wallet</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-              <span className="text-xs text-slate-400 font-medium">Available Balance</span>
+              <span className="text-xs text-slate-400 font-medium">Available Wallet Balance</span>
               <p className="text-3xl font-extrabold text-white">{formatCurrency(user?.balance || 0)}</p>
             </div>
 
-            <div className="space-y-2 text-xs text-slate-400">
+            <div className="space-y-2.5 text-xs text-slate-300">
               <div className="flex items-center gap-2 text-emerald-400 font-medium">
-                <Check className="w-4 h-4" /> Instant automated dividend distribution
+                <Check className="w-4 h-4" /> Hourly yield credits to harvest anytime
               </div>
               <div className="flex items-center gap-2 text-emerald-400 font-medium">
-                <Check className="w-4 h-4" /> Capital principal returned at term maturity
+                <Check className="w-4 h-4" /> Full capital refund at 30-day maturity
               </div>
               <div className="flex items-center gap-2 text-emerald-400 font-medium">
-                <Check className="w-4 h-4" /> Auto-Renew option for continuous compounding
+                <Check className="w-4 h-4" /> Level 1-4 Insurance Aegis coverage
               </div>
             </div>
 
             <Button
               variant="outline"
               onClick={() => setCurrentTab("wallet")}
-              className="w-full text-xs cursor-pointer"
+              className="w-full text-xs cursor-pointer border-slate-700 hover:border-amber-500"
             >
-              + Deposit More Funds
+              + Fund Wallet Balance
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Active Investments List */}
-      <Card>
+      {/* Active Investments List & Yield Harvest Center */}
+      <Card className="border-slate-800 bg-slate-900/90 shadow-2xl">
         <CardHeader>
-          <CardTitle>Active & Historical Quant Portfolios</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-amber-500" />
+              <span>Active 30-Day Bot Deployments & Harvest Center</span>
+            </CardTitle>
+            <span className="text-xs font-bold text-slate-400 bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+              {activeInvestments.length} Active Bots
+            </span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase">
-                <tr>
-                  <th className="p-3">Plan Type</th>
-                  <th className="p-3">Capital</th>
-                  <th className="p-3">Monthly Return</th>
-                  <th className="p-3">Yield Earned</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Start Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-200">
-                {activeInvestments.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-500">
-                      No active quant portfolios yet. Deploy a bot above!
-                    </td>
-                  </tr>
-                ) : (
-                  activeInvestments.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-900/50">
-                      <td className="p-3 font-bold text-slate-100">{inv.planType}</td>
-                      <td className="p-3 font-semibold text-slate-200">{formatCurrency(inv.amount)}</td>
-                      <td className="p-3 font-bold text-emerald-400">+{inv.profitPercent}%</td>
-                      <td className="p-3 font-bold text-amber-400">{formatCurrency(inv.profitEarned || 0)}</td>
-                      <td className="p-3">
-                        <Badge variant="success">{inv.status}</Badge>
-                      </td>
-                      <td className="p-3 text-slate-400">{formatDate(inv.startDate)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {activeInvestments.length === 0 ? (
+            <div className="p-8 text-center bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
+              <Bot className="w-10 h-10 text-slate-600 mx-auto" />
+              <p className="text-slate-400 text-sm font-semibold">No active 30-day quant bots currently running.</p>
+              <p className="text-slate-500 text-xs">Select a bot tier above and click deploy to begin earning hourly yields!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {activeInvestments.map((inv) => {
+                const claimable = inv.claimableYield || 0;
+                return (
+                  <div
+                    key={inv.id}
+                    className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 hover:border-amber-600/40 transition"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-white text-base">{inv.planType}</span>
+                          <Badge variant="success" className="text-[10px]">
+                            {inv.status} (30 DAYS)
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Started: {formatDate(inv.startDate)} • Capital: <strong className="text-slate-200">{formatCurrency(inv.amount)}</strong>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 uppercase block font-bold">Uncollected Bot Yield</span>
+                          <span className="text-base font-black text-emerald-400">+{formatCurrency(claimable)}</span>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant="gold"
+                          disabled={claimable <= 0 || harvestingId === inv.id}
+                          onClick={() => handleHarvestYield(inv.id)}
+                          className="gold-gradient text-slate-950 font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-lg cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{harvestingId === inv.id ? "Harvesting..." : `Harvest Yield (+${formatCurrency(claimable)})`}</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar & Live Stats */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[11px] text-slate-400 font-semibold">
+                        <span>
+                          Elapsed: <strong>{inv.daysElapsed || 0} / 30 Days</strong> ({inv.hoursElapsed || 0} Hours)
+                        </span>
+                        <span>
+                          Target Profit: <strong className="text-emerald-400">+{formatCurrency(inv.totalProfitTarget || (inv.amount * inv.profitPercent) / 100)}</strong>
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                        <div
+                          className="gold-gradient h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(5, inv.progressPercent || 5)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

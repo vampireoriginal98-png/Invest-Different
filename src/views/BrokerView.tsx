@@ -286,31 +286,108 @@ export function BrokerView() {
               </span>
             </div>
 
-            {/* Recharts Interactive Candlestick / Price Chart */}
-            <div className="h-64 w-full bg-slate-950/90 rounded-2xl border border-slate-800/80 p-3 pt-6 relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis domain={["auto", "auto"]} stroke="#64748b" fontSize={10} tickLine={false} orientation="right" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#020617",
-                      borderColor: "#334155",
-                      borderRadius: "12px",
-                      color: "#f8fafc",
-                      fontSize: "12px",
-                      fontFamily: "monospace",
-                    }}
-                  />
-                  <Line type="monotone" dataKey="close" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                  <Bar dataKey="bodyHeight" fill="#10b981">
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </ComposedChart>
-              </ResponsiveContainer>
+            {/* Timeframe selector & Chart Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-4">
+              <div>
+                <h3 className="text-lg font-black text-white">{selectedPair.name} ({selectedPair.symbol})</h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  Live Rate: <strong className="text-amber-400">${livePrice.toFixed(2)}</strong> | Gas Fee: <strong className="text-amber-300">${liveGasFee}</strong> | Spread: <strong className="text-emerald-400">{liveSpread} pips</strong>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
+                  {(["1M", "5M", "15M", "1H"] as const).map((tf) => (
+                    <button
+                      key={tf}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-400 hover:bg-amber-950/50 cursor-pointer"
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+                <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl w-fit">
+                  <Activity className="w-3.5 h-3.5 animate-pulse" /> TICKING
+                </span>
+              </div>
+            </div>
+
+            {/* Authentic SVG Candlestick Chart */}
+            <div className="h-72 w-full bg-slate-950 rounded-2xl border border-slate-800/90 p-4 relative overflow-hidden flex flex-col justify-between">
+              {(() => {
+                if (chartData.length === 0) return null;
+                const lows = chartData.map((c) => c.low);
+                const highs = chartData.map((c) => c.high);
+                const minP = Math.min(...lows) * 0.998;
+                const maxP = Math.max(...highs) * 1.002;
+                const pRange = maxP - minP || 1;
+                const chartH = 220;
+
+                return (
+                  <div className="relative w-full h-[220px]">
+                    {/* Background Horizontal Price Lines */}
+                    {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+                      const val = maxP - ratio * pRange;
+                      return (
+                        <div
+                          key={i}
+                          className="absolute w-full border-b border-slate-800/50 flex justify-end pr-1 text-[9px] font-mono text-slate-500"
+                          style={{ top: `${ratio * 100}%` }}
+                        >
+                          ${val.toFixed(2)}
+                        </div>
+                      );
+                    })}
+
+                    {/* SVG Candlesticks */}
+                    <svg className="w-full h-full overflow-visible">
+                      {chartData.map((c, idx) => {
+                        const totalCandles = chartData.length;
+                        const pctX = ((idx + 0.5) / totalCandles) * 100;
+                        const yHigh = chartH - ((c.high - minP) / pRange) * chartH;
+                        const yLow = chartH - ((c.low - minP) / pRange) * chartH;
+                        const yOpen = chartH - ((c.open - minP) / pRange) * chartH;
+                        const yClose = chartH - ((c.close - minP) / pRange) * chartH;
+                        const isUp = c.close >= c.open;
+                        const color = isUp ? "#10b981" : "#f43f5e";
+                        const yTop = Math.min(yOpen, yClose);
+                        const bodyH = Math.max(3, Math.abs(yClose - yOpen));
+
+                        return (
+                          <g key={idx}>
+                            {/* Wick Line */}
+                            <line
+                              x1={`${pctX}%`}
+                              y1={yHigh}
+                              x2={`${pctX}%`}
+                              y2={yLow}
+                              stroke={color}
+                              strokeWidth={1.5}
+                            />
+                            {/* Candle Body Box */}
+                            <rect
+                              x={`calc(${pctX}% - 6px)`}
+                              y={yTop}
+                              width={12}
+                              height={bodyH}
+                              fill={color}
+                              rx={1.5}
+                              className="transition-all duration-300 hover:opacity-80"
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 border-t border-slate-800/80 pt-2">
+                <span>T-30s</span>
+                <span>T-20s</span>
+                <span>T-10s</span>
+                <span className="text-emerald-400 font-bold">LIVE TICK</span>
+              </div>
             </div>
 
             {/* Orderbook Depth Summary */}

@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   { icon: ArrowUpRight, label: "Withdraw Funds", tab: "withdrawals" },
   { icon: TrendingUp, label: "Bot Yield Plans", tab: "investments" },
   { icon: Landmark, label: "Stock Portfolios", tab: "stocks" },
-  { icon: CandlestickChart, label: "Broker Replica", tab: "broker" },
+  { icon: CandlestickChart, label: "Trade Market Desk", tab: "broker" },
   { icon: Shield, label: "Insurance Aegis", tab: "insurance" },
   { icon: Dices, label: "Spin the Wheel", tab: "spin" },
   { icon: TrendingDown, label: "Predict Trend", tab: "predict" },

@@ -51,6 +51,8 @@ export interface User {
   referralEarnings?: number;
   referredBy?: string | null;
   insuranceLevel: number;
+  consecutiveDays?: number;
+  lastActiveDate?: string | null;
   lastFreeSpinDate?: string | null;
   lastDailyBonusDate?: string | null;
   createdAt: string;

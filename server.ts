@@ -207,7 +207,44 @@ function getGasFeeVal(): number {
   return Number((fees[cycle] + ((now % 1000) / 1000) * 0.2).toFixed(2));
 }
 
-// ------------------- AUTH API ROUTES ------------------- //
+// Helper: Daily Activity Tracker & Consecutive Streak Update
+function updateUserDailyStreak(user: any) {
+  if (!user) return;
+  const today = new Date().toISOString().split("T")[0];
+  const lastDate = user.lastActiveDate;
+
+  if (!user.consecutiveDays || user.consecutiveDays < 1) {
+    user.consecutiveDays = 1;
+    user.lastActiveDate = today;
+    return;
+  }
+
+  if (lastDate === today) {
+    return;
+  }
+
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  if (lastDate === yesterday) {
+    user.consecutiveDays += 1;
+    user.lastActiveDate = today;
+  } else {
+    // Missed a day! Reset consecutive active days streak back to 1
+    user.consecutiveDays = 1;
+    user.lastActiveDate = today;
+  }
+}
+
+function getCanonicalEmail(rawEmail: string): string {
+  if (!rawEmail) return "";
+  const clean = rawEmail.trim().toLowerCase();
+  const [local, domain] = clean.split("@");
+  if (!domain) return clean;
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    const baseLocal = local.replace(/\./g, "").split("+")[0];
+    return `${baseLocal}@gmail.com`;
+  }
+  return clean;
+}
 
 app.post("/api/auth/register", (req: Request, res: Response) => {
   const { name, email, password, referralCode: inputRefCode } = req.body;
@@ -216,9 +253,13 @@ app.post("/api/auth/register", (req: Request, res: Response) => {
   }
 
   const db = readDB();
-  const existing = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  const canonicalEmail = getCanonicalEmail(email);
+
+  const existing = db.users.find(
+    (u) => getCanonicalEmail(u.email) === canonicalEmail
+  );
   if (existing) {
-    return res.status(400).json({ error: "An account with this email already exists" });
+    return res.status(400).json({ error: "An account with this email address already exists" });
   }
 
   const passwordHash = bcrypt.hashSync(password, 10);
@@ -368,6 +409,9 @@ app.get("/api/auth/me", (req: Request, res: Response) => {
   const db = readDB();
   const user = db.users.find((u) => u.id === auth.id);
   if (!user) return res.status(404).json({ error: "User not found" });
+
+  updateUserDailyStreak(user);
+  writeDB(db);
 
   const { password: _, ...userWithoutPassword } = user;
   return res.json({ user: userWithoutPassword });
@@ -1267,31 +1311,100 @@ app.post("/api/games/spin", (req: Request, res: Response) => {
   return res.json({ success: true, rewardWon, newBalance: user.balance, user: cleanUser });
 });
 
-// 5. DAILY TASKS API
+// 5. DAILY TASKS & 30-DAY MILESTONES API
 app.get("/api/tasks/list", (req: Request, res: Response) => {
   const auth = getAuthUser(req);
   if (!auth) return res.status(401).json({ error: "Unauthorized" });
 
   const db = readDB();
   const user = db.users.find((u) => u.id === auth.id);
+  const userId = auth.id;
 
-  const claimedList = db.claimedTasks.filter((ct) => ct.userId === auth.id).map((ct) => ct.taskId);
+  const claimedList = db.claimedTasks.filter((ct) => ct.userId === userId).map((ct) => ct.taskId);
 
-  const tasks = [
-    { id: "tsk_kyc", title: "Complete KYC Verification", description: "Submit state ID & selfie verification", rewardAmount: 5, requiredCount: 1, currentCount: user?.kycStatus === "APPROVED" ? 1 : 0 },
-    { id: "tsk_dep", title: "First Capital Deposit", description: "Deposit at least $50 into wallet balance", rewardAmount: 10, requiredCount: 1, currentCount: (user?.totalDeposited || 0) >= 50 ? 1 : 0 },
-    { id: "tsk_trd", title: "First Market Trade", description: "Execute 1 trade in Forex/Broker replica", rewardAmount: 5, requiredCount: 1, currentCount: db.tradeOrders.filter((t) => t.userId === auth.id).length >= 1 ? 1 : 0 },
-    { id: "tsk_ref", title: "Refer an Investor", description: "Refer 1 investor with a confirmed deposit", rewardAmount: 20, requiredCount: 1, currentCount: db.users.filter((u) => u.referredBy === auth.id).length >= 1 ? 1 : 0 },
-    { id: "tsk_stk", title: "Stock Investor", description: "Buy $500 or more in global stock index", rewardAmount: 15, requiredCount: 1, currentCount: db.stockHoldings.filter((s) => s.userId === auth.id).length >= 1 ? 1 : 0 },
+  updateUserDailyStreak(user);
+  writeDB(db);
+
+  const userCreatedAt = user?.createdAt ? new Date(user.createdAt).getTime() : Date.now();
+  const accountAgeDays = Math.max(1, Math.floor((Date.now() - userCreatedAt) / 86400000) + 1);
+  const consecutiveDays = user?.consecutiveDays || 1;
+
+  const totalDeposited = user?.totalDeposited || 0;
+  const tradesCount = db.tradeOrders.filter((t) => t.userId === userId).length;
+  const stockCount = db.stockHoldings.filter((s) => s.userId === userId).length;
+  const totalStockVal = db.stockHoldings.filter((s) => s.userId === userId).reduce((a, c) => a + (c.currentValue || c.totalInvested || 0), 0);
+  const botCount = (db.investments || []).filter((inv) => inv.userId === userId).length;
+  const botHighCount = (db.investments || []).filter((inv) => inv.userId === userId && inv.amount >= 1000).length;
+  const referralsCount = db.users.filter((u) => u.referredBy === userId || (user?.referralCode && u.referredBy === user.referralCode)).length;
+  const spinCount = (db.activities || []).filter((act) => act.userId === userId && act.type === "spin").length;
+  const insuranceLevel = user?.insuranceLevel || 0;
+  const hasPin = !!user?.transactionPin;
+  const isKyc = user?.kycStatus === "APPROVED";
+  const userBalance = user?.balance || 0;
+  const netWorth = userBalance + (db.investments || []).filter((i) => i.userId === userId && i.status === "ACTIVE").reduce((a, c) => a + c.amount, 0) + totalStockVal;
+  const totalTradeVol = db.tradeOrders.filter((t) => t.userId === userId).reduce((a, c) => a + (c.amount || 0), 0);
+  const totalYieldEarned = (db.investments || []).filter((i) => i.userId === userId).reduce((a, c) => a + (c.profitEarned || 0), 0);
+
+  const rawTasks = [
+    // Phase 1: Days 1-7 (Onboarding & Activation)
+    { id: "tsk_kyc", day: 1, title: "Complete KYC Identity Verification", category: "SECURITY", description: "Submit state ID & selfie for full tier-1 account verification", rewardAmount: 5, requiredCount: 1, currentCount: isKyc ? 1 : 0 },
+    { id: "tsk_pin", day: 1, title: "Set Up Security Transaction PIN", category: "SECURITY", description: "Set your 6-digit transaction PIN in profile settings", rewardAmount: 5, requiredCount: 1, currentCount: hasPin ? 1 : 0 },
+    { id: "tsk_spin_1", day: 1, title: "First Fortune Wheel Spin", category: "DAILY", description: "Spin the daily Fortune Wheel for an instant cash reward", rewardAmount: 5, requiredCount: 1, currentCount: spinCount >= 1 ? 1 : 0 },
+    { id: "tsk_dep_50", day: 2, title: "Starter Wallet Funding", category: "DEPOSIT", description: "Deposit at least $50 into your wallet balance", rewardAmount: 10, requiredCount: 1, currentCount: totalDeposited >= 50 ? 1 : 0 },
+    { id: "tsk_dep_250", day: 2, title: "Growth Capital Deposit", category: "DEPOSIT", description: "Reach $250+ total capital deposited", rewardAmount: 15, requiredCount: 1, currentCount: totalDeposited >= 250 ? 1 : 0 },
+    { id: "tsk_dep_1000", day: 3, title: "Premier Investor Deposit", category: "DEPOSIT", description: "Fund $1,000 or more to unlock HFT bot engines", rewardAmount: 30, requiredCount: 1, currentCount: totalDeposited >= 1000 ? 1 : 0 },
+    { id: "tsk_trd_1", day: 3, title: "Execute First Market Trade", category: "TRADING", description: "Place 1 live order in Forex/CFD broker replica desk", rewardAmount: 5, requiredCount: 1, currentCount: tradesCount >= 1 ? 1 : 0 },
+    { id: "tsk_trd_5", day: 4, title: "Execute 5 Market Trades", category: "TRADING", description: "Complete 5 market trade orders across forex or crypto pairs", rewardAmount: 15, requiredCount: 5, currentCount: tradesCount },
+    { id: "tsk_trd_10", day: 5, title: "Execute 10 Market Trades", category: "TRADING", description: "Execute 10 market trades to master CFD order execution", rewardAmount: 25, requiredCount: 10, currentCount: tradesCount },
+    { id: "tsk_bot_1", day: 6, title: "Deploy First Quant Yield Bot", category: "BOT", description: "Activate your first automated 30-day quantitative yield bot", rewardAmount: 10, requiredCount: 1, currentCount: botCount >= 1 ? 1 : 0 },
+    { id: "tsk_bot_gold", day: 7, title: "Deploy Gold or Higher Bot", category: "BOT", description: "Deploy a Gold Prime Quant Bot ($1,000+ capital)", rewardAmount: 25, requiredCount: 1, currentCount: botHighCount >= 1 ? 1 : 0 },
+
+    // Phase 2: Days 8-15 (Trading & Portfolio Growth)
+    { id: "tsk_stk_1", day: 8, title: "Purchase Global Stock Equity", category: "STOCK", description: "Allocate funds into AAPL, NVDA, GOOGL, or BTC Trust stock index", rewardAmount: 10, requiredCount: 1, currentCount: stockCount >= 1 ? 1 : 0 },
+    { id: "tsk_stk_500", day: 9, title: "Build $500 Stock Portfolio", category: "STOCK", description: "Hold $500 or more in global equities and index derivative trusts", rewardAmount: 20, requiredCount: 1, currentCount: totalStockVal >= 500 ? 1 : 0 },
+    { id: "tsk_ins_1", day: 10, title: "Activate Insurance Shield Level 1", category: "INSURANCE", description: "Protect your capital with Level 1 Aegis Insurance shield", rewardAmount: 10, requiredCount: 1, currentCount: insuranceLevel >= 1 ? 1 : 0 },
+    { id: "tsk_ins_3", day: 11, title: "Upgrade Insurance Aegis to Level 3", category: "INSURANCE", description: "Lock in Level 3 insurance coverage with 55% loss protection", rewardAmount: 25, requiredCount: 1, currentCount: insuranceLevel >= 3 ? 1 : 0 },
+    { id: "tsk_spin_5", day: 12, title: "Spin Fortune Wheel 5 Times", category: "DAILY", description: "Spin the Fortune Wheel 5 separate times for daily rewards", rewardAmount: 15, requiredCount: 5, currentCount: spinCount },
+    { id: "tsk_spin_10", day: 13, title: "Spin Fortune Wheel 10 Times", category: "DAILY", description: "Accumulate 10 Fortune Wheel spins to boost daily earnings", rewardAmount: 25, requiredCount: 10, currentCount: spinCount },
+    { id: "tsk_ai_chat", day: 14, title: "Consult AI Financial Advisor", category: "ANALYTICS", description: "Engage with the Groq Quant Analyst AI for market strategies", rewardAmount: 5, requiredCount: 1, currentCount: 1 },
+    { id: "tsk_briefing", day: 15, title: "Complete Daily Risk Assessment", category: "ANALYTICS", description: "Review daily volatility metrics & insurance coverage status", rewardAmount: 5, requiredCount: 1, currentCount: 1 },
+
+    // Phase 3: Days 16-22 (Network & Capital Acceleration)
+    { id: "tsk_ref_1", day: 16, title: "Refer First Investor Friend", category: "REFERRAL", description: "Share your referral link and onboard 1 active investor", rewardAmount: 15, requiredCount: 1, currentCount: referralsCount >= 1 ? 1 : 0 },
+    { id: "tsk_ref_3", day: 17, title: "Refer 3 Active Investors", category: "REFERRAL", description: "Expand your syndicate network with 3 active investor referrals", rewardAmount: 35, requiredCount: 3, currentCount: referralsCount },
+    { id: "tsk_ref_5", day: 18, title: "Build 5-Investor Network", category: "REFERRAL", description: "Build a 5-person referral team and earn network commissions", rewardAmount: 75, requiredCount: 5, currentCount: referralsCount },
+    { id: "tsk_yield_50", day: 19, title: "Accumulate $50 Quant Bot Yield", category: "BOT", description: "Collect $50 or more in cumulative automated bot profits", rewardAmount: 20, requiredCount: 1, currentCount: totalYieldEarned >= 50 ? 1 : 0 },
+    { id: "tsk_yield_200", day: 20, title: "Accumulate $200 Quant Bot Yield", category: "BOT", description: "Collect $200 or more in cumulative automated quant bot profits", rewardAmount: 40, requiredCount: 1, currentCount: totalYieldEarned >= 200 ? 1 : 0 },
+    { id: "tsk_vol_1000", day: 21, title: "Reach $1,000 Trading Volume", category: "TRADING", description: "Trade $1,000 total volume in broker replica market orders", rewardAmount: 25, requiredCount: 1, currentCount: totalTradeVol >= 1000 ? 1 : 0 },
+    { id: "tsk_vol_5000", day: 22, title: "Reach $5,000 Trading Volume", category: "TRADING", description: "Trade $5,000 total volume across crypto, stock, and forex pairs", rewardAmount: 50, requiredCount: 1, currentCount: totalTradeVol >= 5000 ? 1 : 0 },
+
+    // Phase 4: Days 23-30 (Sovereign Mastery Apex)
+    { id: "tsk_portfolio_1000", day: 25, title: "Maintain $1,000 Net Worth", category: "MILESTONE", description: "Build a total combined portfolio balance of $1,000+", rewardAmount: 30, requiredCount: 1, currentCount: netWorth >= 1000 ? 1 : 0 },
+    { id: "tsk_portfolio_5000", day: 27, title: "Maintain $5,000 Sovereign Portfolio", category: "MILESTONE", description: "Reach $5,000+ total sovereign portfolio across wallet & bots", rewardAmount: 60, requiredCount: 1, currentCount: netWorth >= 5000 ? 1 : 0 },
+    { id: "tsk_active_15", day: 15, title: "15-Day Active Investor Milestone", category: "MILESTONE", description: "Maintain 15 consecutive active days on Invest Different ecosystem", rewardAmount: 40, requiredCount: 15, currentCount: (accountAgeDays >= 15 && consecutiveDays >= 15) ? 15 : Math.min(consecutiveDays, accountAgeDays) },
+    { id: "tsk_master_30", day: 30, title: "30-Day Master Investor Apex", category: "MILESTONE", description: "Master the 30-day investment cycle and claim your apex cash bonus", rewardAmount: 100, requiredCount: 30, currentCount: (accountAgeDays >= 30 && consecutiveDays >= 30) ? 30 : Math.min(consecutiveDays, accountAgeDays) },
   ];
 
-  const result = tasks.map((t) => ({
-    ...t,
-    completed: t.currentCount >= t.requiredCount,
-    claimed: claimedList.includes(t.id),
-  }));
+  const result = rawTasks.map((t) => {
+    const isUnlockedByAgeAndStreak = accountAgeDays >= t.day && consecutiveDays >= t.day;
+    const actualCount = isUnlockedByAgeAndStreak ? t.currentCount : 0;
+    const isCompleted = isUnlockedByAgeAndStreak && actualCount >= t.requiredCount;
 
-  return res.json({ tasks: result });
+    return {
+      ...t,
+      currentCount: actualCount,
+      completed: isCompleted,
+      claimed: claimedList.includes(t.id),
+      unlockedByStreak: isUnlockedByAgeAndStreak,
+    };
+  });
+
+  return res.json({
+    tasks: result,
+    consecutiveDays,
+    accountAgeDays,
+    lastActiveDate: user?.lastActiveDate,
+  });
 });
 
 app.post("/api/tasks/claim/:taskId", (req: Request, res: Response) => {
@@ -1308,18 +1421,44 @@ app.post("/api/tasks/claim/:taskId", (req: Request, res: Response) => {
     return res.status(400).json({ error: "Task reward already claimed" });
   }
 
-  // Determine reward
+  // Dynamic reward lookup map
   const rewardMap: Record<string, number> = {
     tsk_kyc: 5,
-    tsk_dep: 10,
-    tsk_trd: 5,
-    tsk_ref: 20,
-    tsk_stk: 15,
+    tsk_pin: 5,
+    tsk_spin_1: 5,
+    tsk_dep_50: 10,
+    tsk_dep_250: 15,
+    tsk_dep_1000: 30,
+    tsk_trd_1: 5,
+    tsk_trd_5: 15,
+    tsk_trd_10: 25,
+    tsk_bot_1: 10,
+    tsk_bot_gold: 25,
+    tsk_stk_1: 10,
+    tsk_stk_500: 20,
+    tsk_ins_1: 10,
+    tsk_ins_3: 25,
+    tsk_spin_5: 15,
+    tsk_spin_10: 25,
+    tsk_ai_chat: 5,
+    tsk_briefing: 5,
+    tsk_ref_1: 15,
+    tsk_ref_3: 35,
+    tsk_ref_5: 75,
+    tsk_yield_50: 20,
+    tsk_yield_200: 40,
+    tsk_vol_1000: 25,
+    tsk_vol_5000: 50,
+    tsk_portfolio_1000: 30,
+    tsk_portfolio_5000: 60,
+    tsk_active_15: 40,
+    tsk_master_30: 100,
   };
 
-  const reward = rewardMap[taskId] || 5;
+  const reward = rewardMap[taskId] || 10;
 
   db.users[userIndex].balance += reward;
+  db.users[userIndex].updatedAt = new Date().toISOString();
 
   db.claimedTasks.push({
     userId: auth.id,
@@ -1330,8 +1469,8 @@ app.post("/api/tasks/claim/:taskId", (req: Request, res: Response) => {
   db.activities.unshift({
     id: "act_" + Date.now(),
     userId: auth.id,
-    title: "Daily Task Claimed",
-    description: `Claimed +$${reward} task bonus reward`,
+    title: "30-Day Task Reward Claimed",
+    description: `Claimed +$${reward}.00 cash reward credited directly to wallet balance`,
     amount: reward,
     type: "task",
     createdAt: new Date().toISOString(),
@@ -1340,14 +1479,15 @@ app.post("/api/tasks/claim/:taskId", (req: Request, res: Response) => {
   db.notifications.unshift({
     id: "notif_" + Date.now(),
     userId: auth.id,
-    message: `🎁 Task Claimed! +$${reward} bonus credited to wallet balance.`,
+    message: `🎉 Task Reward Claimed! +$${reward}.00 added to your profile balance.`,
     read: false,
     type: "TASK",
     createdAt: new Date().toISOString(),
   });
 
   writeDB(db);
-  return res.json({ success: true, reward, newBalance: db.users[userIndex].balance });
+  const { password: _, ...cleanUser } = db.users[userIndex];
+  return res.json({ success: true, reward, newBalance: db.users[userIndex].balance, user: cleanUser });
 });
 
 // 6. ACHIEVEMENTS API
@@ -1744,7 +1884,7 @@ app.post("/api/admin/notifications/send", (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
-// ------------------- INVESTMENTS API ROUTES ------------------- //
+// ------------------- INVESTMENTS & QUANT YIELD BOTS API ------------------- //
 
 app.get("/api/investments", (req: Request, res: Response) => {
   const auth = getAuthUser(req);
@@ -1752,7 +1892,42 @@ app.get("/api/investments", (req: Request, res: Response) => {
 
   const db = readDB();
   const userInvestments = (db.investments || []).filter((inv: any) => inv.userId === auth.id);
-  return res.json({ investments: userInvestments });
+  const now = Date.now();
+
+  const enrichedInvestments = userInvestments.map((inv: any) => {
+    const startMs = new Date(inv.startDate).getTime();
+    const durationDays = inv.durationDays || 30;
+    const durationHours = durationDays * 24;
+    const elapsedMs = Math.max(0, now - startMs);
+    const hoursElapsed = Math.min(durationHours, Math.floor(elapsedMs / (1000 * 60 * 60)));
+    const daysElapsed = Math.min(durationDays, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)));
+
+    const totalProfitTarget = (inv.amount * inv.profitPercent) / 100;
+    const dailyYieldRate = totalProfitTarget / durationDays;
+    const hourlyYieldRate = totalProfitTarget / durationHours;
+
+    // Minimum simulation accrued yield if active: guaranteed partial yield progress so user sees bot running
+    const minHours = inv.status === "ACTIVE" ? Math.max(hoursElapsed, 6) : hoursElapsed;
+    const accruedYield = Math.min(totalProfitTarget, Number((minHours * hourlyYieldRate).toFixed(4)));
+
+    const alreadyHarvested = inv.claimedYield || inv.profitEarned || 0;
+    const claimableYield = Math.max(0, Number((accruedYield - alreadyHarvested).toFixed(2)));
+    const progressPercent = Math.min(100, Number(((minHours / durationHours) * 100).toFixed(1)));
+
+    return {
+      ...inv,
+      totalProfitTarget: Number(totalProfitTarget.toFixed(2)),
+      dailyYieldRate: Number(dailyYieldRate.toFixed(2)),
+      hourlyYieldRate: Number(hourlyYieldRate.toFixed(4)),
+      hoursElapsed: minHours,
+      daysElapsed: Math.min(durationDays, Math.floor(minHours / 24)),
+      accruedYield: Number(accruedYield.toFixed(2)),
+      claimableYield,
+      progressPercent,
+    };
+  });
+
+  return res.json({ investments: enrichedInvestments });
 });
 
 app.post("/api/investments", (req: Request, res: Response) => {
@@ -1775,24 +1950,113 @@ app.post("/api/investments", (req: Request, res: Response) => {
   dbUser.balance -= amount;
   dbUser.updatedAt = new Date().toISOString();
 
+  const durDays = durationDays || 30;
   const newInvestment = {
     id: "inv_" + Date.now() + Math.random().toString(36).substring(2, 5),
     userId: dbUser.id,
-    planType: planType || "Bot Yield Plan",
+    planType: planType || "Gold Prime Quant Bot",
     amount: Number(amount),
-    durationDays: durationDays || 30,
-    profitPercent: profitPercent || 10,
+    durationDays: durDays,
+    profitPercent: profitPercent || 13.5,
     profitEarned: 0,
+    claimedYield: 0,
     status: "ACTIVE",
     startDate: new Date().toISOString(),
-    endDate: new Date(Date.now() + (durationDays || 30) * 86400000).toISOString(),
+    endDate: new Date(Date.now() + durDays * 86400000).toISOString(),
   };
 
   if (!db.investments) db.investments = [];
   db.investments.unshift(newInvestment);
 
+  db.activities.unshift({
+    id: "act_" + Date.now(),
+    userId: dbUser.id,
+    title: "Quant Bot Deployed",
+    description: `Deployed ${planType} with $${amount}.00 capital for ${durDays} days`,
+    amount: -Number(amount),
+    type: "investment",
+    createdAt: new Date().toISOString(),
+  });
+
+  db.notifications.unshift({
+    id: "notif_" + Date.now(),
+    userId: dbUser.id,
+    message: `🤖 Bot Deployed! ${planType} is active for ${durDays} days. Yields accumulate hourly!`,
+    read: false,
+    type: "INVESTMENT",
+    createdAt: new Date().toISOString(),
+  });
+
   writeDB(db);
-  return res.json({ success: true, newBalance: dbUser.balance, investment: newInvestment });
+  const { password: _, ...cleanUser } = dbUser;
+  return res.json({ success: true, newBalance: dbUser.balance, user: cleanUser, investment: newInvestment });
+});
+
+app.post("/api/investments/claim-yield/:investmentId", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const investmentId = req.params.investmentId;
+  const db = readDB();
+  const dbUser = db.users.find((u: any) => u.id === auth.id);
+  if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+  const inv = (db.investments || []).find((i: any) => i.id === investmentId && i.userId === auth.id);
+  if (!inv) return res.status(404).json({ error: "Active bot investment not found" });
+
+  const now = Date.now();
+  const startMs = new Date(inv.startDate).getTime();
+  const durationDays = inv.durationDays || 30;
+  const durationHours = durationDays * 24;
+  const elapsedMs = Math.max(0, now - startMs);
+  const hoursElapsed = Math.min(durationHours, Math.floor(elapsedMs / (1000 * 60 * 60)));
+  const minHours = Math.max(hoursElapsed, 6);
+
+  const totalProfitTarget = (inv.amount * inv.profitPercent) / 100;
+  const hourlyYieldRate = totalProfitTarget / durationHours;
+  const accruedYield = Math.min(totalProfitTarget, Number((minHours * hourlyYieldRate).toFixed(4)));
+
+  const alreadyHarvested = inv.claimedYield || inv.profitEarned || 0;
+  const claimable = Math.max(0, Number((accruedYield - alreadyHarvested).toFixed(2)));
+
+  if (claimable <= 0) {
+    return res.status(400).json({ error: "No uncollected yield available yet. Please check back later!" });
+  }
+
+  dbUser.balance += claimable;
+  dbUser.updatedAt = new Date().toISOString();
+
+  inv.claimedYield = Number((alreadyHarvested + claimable).toFixed(2));
+  inv.profitEarned = inv.claimedYield;
+
+  db.activities.unshift({
+    id: "act_" + Date.now(),
+    userId: dbUser.id,
+    title: "Bot Yield Harvested",
+    description: `Harvested +$${claimable.toFixed(2)} from ${inv.planType} directly into profile balance`,
+    amount: claimable,
+    type: "yield",
+    createdAt: new Date().toISOString(),
+  });
+
+  db.notifications.unshift({
+    id: "notif_" + Date.now(),
+    userId: dbUser.id,
+    message: `🤖 Yield Harvested! +$${claimable.toFixed(2)} credited directly to your profile balance.`,
+    read: false,
+    type: "YIELD",
+    createdAt: new Date().toISOString(),
+  });
+
+  writeDB(db);
+  const { password: _, ...cleanUser } = dbUser;
+  return res.json({
+    success: true,
+    harvestedAmount: claimable,
+    newBalance: dbUser.balance,
+    user: cleanUser,
+    investment: inv,
+  });
 });
 
 // ------------------- REFERRAL API ROUTES ------------------- //
