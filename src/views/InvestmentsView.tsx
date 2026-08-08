@@ -23,6 +23,48 @@ export function InvestmentsView() {
 
   const currentPlan: QuantBotTier = QUANT_BOT_CATALOG.find((b) => b.id === selectedBotId) || QUANT_BOT_CATALOG[3];
 
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [targetGoalInput, setTargetGoalInput] = useState<number>(user?.targetInvestmentGoal || 10000);
+
+  const targetGoal = user?.targetInvestmentGoal || 10000;
+  const totalActiveInvested = activeInvestments.reduce((acc, inv) => acc + (inv.amount || 0), 0);
+  const totalYieldHarvested = activeInvestments.reduce((acc, inv) => acc + (inv.profitEarned || 0), 0);
+  const totalAccumulated = totalActiveInvested + totalYieldHarvested;
+  const progressPercent = Math.min(100, Math.max(0, Number(((totalAccumulated / targetGoal) * 100).toFixed(1))));
+  const remainingGoal = Math.max(0, targetGoal - totalAccumulated);
+
+  const dailyYieldRate = activeInvestments.reduce((acc, inv) => acc + (inv.dailyYield || 0), 0);
+  const estimatedDaysLeft = dailyYieldRate > 0 ? Math.ceil(remainingGoal / dailyYieldRate) : "N/A";
+
+  const handleSaveTargetGoal = async () => {
+    if (!targetGoalInput || targetGoalInput < 100) {
+      toast.error("Minimum target goal is $100");
+      return;
+    }
+    try {
+      const res = await fetch("/api/user/target-goal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("invest_token")}`,
+        },
+        body: JSON.stringify({ targetInvestmentGoal: targetGoalInput }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.user) {
+          useAuthStore.getState().setUser(data.user);
+        }
+        toast.success(`Target investment goal set to $${targetGoalInput.toLocaleString()}`);
+        setEditingGoal(false);
+      } else {
+        toast.error(data.error || "Failed to update target goal");
+      }
+    } catch (err) {
+      toast.error("Network error updating goal");
+    }
+  };
+
   const filteredBots = QUANT_BOT_CATALOG.filter((b) => {
     if (categoryFilter === "STARTER") return b.tierNumber <= 3;
     if (categoryFilter === "HIGH_YIELD") return b.tierNumber >= 4 && b.tierNumber <= 7;
@@ -171,6 +213,111 @@ export function InvestmentsView() {
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase">30-Day Execution Engine</p>
             <p className="text-xs font-black text-emerald-400">720 HOURS CONTINUOUS RUN</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Target Investment Progress Tracker */}
+      <div className="bg-slate-900/90 border border-amber-600/50 p-6 rounded-3xl shadow-2xl backdrop-blur-md space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-amber-950/80 border border-amber-600/50 text-amber-500 shadow-xl">
+              <TrendingUp className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  Target Investment Portfolio Goal
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] font-bold">
+                  {progressPercent >= 100 ? "🎯 GOAL REACHED!" : `${progressPercent}% COMPLETED`}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Target Portfolio Milestone: <strong className="text-amber-400">${targetGoal.toLocaleString()}</strong> | Accumulated Value: <strong className="text-emerald-400">${totalAccumulated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setEditingGoal(!editingGoal)}
+            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-400 border border-amber-600/40 text-xs font-bold transition cursor-pointer self-start sm:self-auto"
+          >
+            {editingGoal ? "Cancel Edit" : "🎯 Edit Target Goal"}
+          </button>
+        </div>
+
+        {editingGoal && (
+          <div className="p-4 bg-slate-950 border border-amber-600/40 rounded-2xl space-y-3 animate-in fade-in">
+            <label className="block text-xs font-bold text-slate-300 uppercase">
+              Set Your Custom Target Portfolio Goal ($ USD)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="100"
+                step="500"
+                value={targetGoalInput}
+                onChange={(e) => setTargetGoalInput(Number(e.target.value))}
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500"
+                placeholder="10000"
+              />
+              <button
+                onClick={handleSaveTargetGoal}
+                className="px-5 py-2.5 gold-gradient text-slate-950 font-black text-xs uppercase rounded-xl shadow-lg cursor-pointer"
+              >
+                Save Target
+              </button>
+            </div>
+            <div className="flex gap-2">
+              {[5000, 10000, 25000, 50000, 100000].map((preset) => (
+                <button
+                  key={preset}
+                  onClick={() => setTargetGoalInput(preset)}
+                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-mono text-amber-400 rounded-lg cursor-pointer"
+                >
+                  ${preset.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Visual Progress Bar */}
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-xs font-mono">
+            <span className="text-slate-400">Progress: <strong className="text-amber-400">${totalAccumulated.toFixed(2)}</strong></span>
+            <span className="text-emerald-400 font-bold">{progressPercent}%</span>
+            <span className="text-slate-400">Target: <strong className="text-white">${targetGoal.toLocaleString()}</strong></span>
+          </div>
+
+          <div className="h-4 w-full bg-slate-950 rounded-full border border-slate-800 p-0.5 overflow-hidden relative shadow-inner">
+            <div
+              className="h-full gold-gradient rounded-full transition-all duration-700 relative overflow-hidden shadow-lg"
+              style={{ width: `${progressPercent}%` }}
+            >
+              <div className="absolute inset-0 bg-white/20 animate-pulse" />
+            </div>
+          </div>
+        </div>
+
+        {/* Goal Statistics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+          <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 uppercase font-sans block">Active Bot Capital</span>
+            <strong className="text-white text-sm">${totalActiveInvested.toLocaleString()}</strong>
+          </div>
+          <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 uppercase font-sans block">Harvested Yield Profit</span>
+            <strong className="text-emerald-400 text-sm">+${totalYieldHarvested.toFixed(2)}</strong>
+          </div>
+          <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 uppercase font-sans block">Remaining to Goal</span>
+            <strong className="text-amber-400 text-sm">${remainingGoal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          </div>
+          <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80">
+            <span className="text-[10px] text-slate-400 uppercase font-sans block">Est. Time to Target</span>
+            <strong className="text-amber-300 text-sm">{estimatedDaysLeft === "N/A" ? "Deploy Bot to Calc" : `${estimatedDaysLeft} Day(s)`}</strong>
           </div>
         </div>
       </div>

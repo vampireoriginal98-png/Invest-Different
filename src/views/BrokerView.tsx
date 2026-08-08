@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { TRADING_PAIRS, calculateTradeOutcome } from "@/lib/tradeEngine";
 import { TradeOrder } from "@/types";
@@ -10,26 +10,18 @@ import {
   Activity,
   History,
   Zap,
-  Flame,
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
   TrendingUp,
   Layers,
   Fuel,
+  Clock,
+  Timer,
+  Play,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Cell,
-  CartesianGrid,
-} from "recharts";
 import toast from "react-hot-toast";
+import confetti from "canvas-confetti";
 
 interface ChartCandle {
   time: string;
@@ -39,110 +31,160 @@ interface ChartCandle {
   close: number;
   volume: number;
   color: string;
-  bodyLow: number;
-  bodyHeight: number;
 }
+
+interface ActivePosition {
+  id: string;
+  pair: string;
+  type: "BUY" | "SELL";
+  amount: number;
+  leverage: number;
+  entryPrice: number;
+  durationSeconds: number;
+  remainingSeconds: number;
+  startTime: number;
+}
+
+const TIMEFRAMES = [
+  { label: "1M", intervalMs: 1000, name: "1 Minute" },
+  { label: "3M", intervalMs: 2000, name: "3 Minutes" },
+  { label: "5M", intervalMs: 3000, name: "5 Minutes" },
+  { label: "15M", intervalMs: 5000, name: "15 Minutes" },
+  { label: "30M", intervalMs: 8000, name: "30 Minutes" },
+  { label: "1H", intervalMs: 12000, name: "1 Hour" },
+];
+
+const TRADE_EXPIRATIONS = [
+  { label: "60 Sec", seconds: 60 },
+  { label: "3 Min", seconds: 180 },
+  { label: "5 Min", seconds: 300 },
+  { label: "15 Min", seconds: 900 },
+];
 
 export function BrokerView() {
   const { user, token, updateBalance, setCurrentTab } = useAuthStore();
   const [selectedPair, setSelectedPair] = useState(TRADING_PAIRS[0]);
-  const [livePrice, setLivePrice] = useState<number>(TRADING_PAIRS[0].basePrice);
+  const [selectedTimeframe, setSelectedTimeframe] = useState(TIMEFRAMES[0]);
+  const [selectedDuration, setSelectedDuration] = useState(TRADE_EXPIRATIONS[0]);
+
+  // Map storing candle history for EACH pair independently
+  const [pairPrices, setPairPrices] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    TRADING_PAIRS.forEach((p) => {
+      init[p.symbol] = p.basePrice;
+    });
+    return init;
+  });
+
+  const [pairCharts, setPairCharts] = useState<Record<string, ChartCandle[]>>(() => {
+    const init: Record<string, ChartCandle[]> = {};
+    TRADING_PAIRS.forEach((p) => {
+      const base = p.basePrice;
+      const candles: ChartCandle[] = [];
+      let current = base;
+
+      for (let i = 25; i >= 1; i--) {
+        const volatility = base * 0.003;
+        const delta = (Math.random() - 0.49) * volatility;
+        const open = Number(current.toFixed(2));
+        const close = Number((current + delta).toFixed(2));
+        const high = Number((Math.max(open, close) + Math.random() * (volatility * 0.8)).toFixed(2));
+        const low = Number((Math.min(open, close) - Math.random() * (volatility * 0.8)).toFixed(2));
+        const isUp = close >= open;
+
+        candles.push({
+          time: `${i * 2}s ago`,
+          open,
+          high,
+          low,
+          close,
+          volume: Math.floor(Math.random() * 500 + 100),
+          color: isUp ? "#10b981" : "#f43f5e",
+        });
+        current = close;
+      }
+      init[p.symbol] = candles;
+    });
+    return init;
+  });
+
   const [tradeAmount, setTradeAmount] = useState<number>(50);
   const [leverage, setLeverage] = useState<number>(100);
   const [history, setHistory] = useState<TradeOrder[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Spontaneous Gas Fee & Spread Volatility State
+  // Active Live Position Countdown State
+  const [activePosition, setActivePosition] = useState<ActivePosition | null>(null);
+
+  // Spontaneous Gas Fee & Spread State
   const [liveGasFee, setLiveGasFee] = useState<number>(1.85);
   const [liveSpread, setLiveSpread] = useState<number>(0.4);
 
-  // Recharts Candlestick series
-  const [chartData, setChartData] = useState<ChartCandle[]>([]);
-  const [orderBook, setOrderBook] = useState<{ bids: number[]; asks: number[] }>({
-    bids: [],
-    asks: [],
-  });
-
-  // Initializing Chart Data for selected pair
-  useEffect(() => {
-    setLivePrice(selectedPair.basePrice);
-    const base = selectedPair.basePrice;
-    const initial: ChartCandle[] = [];
-    let current = base;
-
-    for (let i = 20; i >= 1; i--) {
-      const delta = (Math.random() - 0.48) * (base * 0.003);
-      const open = Number((current).toFixed(2));
-      const close = Number((current + delta).toFixed(2));
-      const high = Number((Math.max(open, close) + Math.random() * (base * 0.0015)).toFixed(2));
-      const low = Number((Math.min(open, close) - Math.random() * (base * 0.0015)).toFixed(2));
-      const isUp = close >= open;
-
-      initial.push({
-        time: `${i}s ago`,
-        open,
-        high,
-        low,
-        close,
-        volume: Math.floor(Math.random() * 500 + 100),
-        color: isUp ? "#10b981" : "#f43f5e",
-        bodyLow: Math.min(open, close),
-        bodyHeight: Math.max(0.01, Math.abs(close - open)),
-      });
-      current = close;
-    }
-    setChartData(initial);
-  }, [selectedPair]);
-
-  // Spontaneous Price Ticking, Gas Fee & Spread Volatility
+  // Independent Price Ticking per pair
   useEffect(() => {
     const interval = setInterval(() => {
-      // Volatile Gas & Spread Ticking
       setLiveGasFee(Number((1.20 + Math.random() * 2.80).toFixed(2)));
       setLiveSpread(Number((0.2 + Math.random() * 1.4).toFixed(1)));
 
-      setLivePrice((prev) => {
-        const delta = (Math.random() - 0.48) * (selectedPair.basePrice * 0.002);
-        const nextClose = Number((prev + delta).toFixed(2));
-        const open = prev;
-        const high = Number((Math.max(open, nextClose) + Math.random() * (selectedPair.basePrice * 0.001)).toFixed(2));
-        const low = Number((Math.min(open, nextClose) - Math.random() * (selectedPair.basePrice * 0.001)).toFixed(2));
-        const isUp = nextClose >= open;
+      setPairPrices((prevPrices) => {
+        const nextPrices = { ...prevPrices };
 
-        setChartData((prevChart) => {
-          const newCandle: ChartCandle = {
-            time: "Now",
-            open,
-            high,
-            low,
-            close: nextClose,
-            volume: Math.floor(Math.random() * 800 + 200),
-            color: isUp ? "#10b981" : "#f43f5e",
-            bodyLow: Math.min(open, nextClose),
-            bodyHeight: Math.max(0.01, Math.abs(nextClose - open)),
-          };
-          return [...prevChart.slice(1), newCandle];
+        TRADING_PAIRS.forEach((p) => {
+          const currentPrice = prevPrices[p.symbol] || p.basePrice;
+          const volatility = p.basePrice * 0.0018;
+          const delta = (Math.random() - 0.49) * volatility;
+          const open = currentPrice;
+          const nextClose = Number((currentPrice + delta).toFixed(2));
+          const high = Number((Math.max(open, nextClose) + Math.random() * (volatility * 0.5)).toFixed(2));
+          const low = Number((Math.min(open, nextClose) - Math.random() * (volatility * 0.5)).toFixed(2));
+          const isUp = nextClose >= open;
+
+          nextPrices[p.symbol] = nextClose;
+
+          // Update chart candles for this pair
+          setPairCharts((prevCharts) => {
+            const candles = prevCharts[p.symbol] || [];
+            const newCandle: ChartCandle = {
+              time: "Now",
+              open,
+              high,
+              low,
+              close: nextClose,
+              volume: Math.floor(Math.random() * 800 + 200),
+              color: isUp ? "#10b981" : "#f43f5e",
+            };
+            return {
+              ...prevCharts,
+              [p.symbol]: [...candles.slice(1), newCandle],
+            };
+          });
         });
 
-        // Live Orderbook Depth
-        setOrderBook({
-          asks: [
-            Number((nextClose + 0.08).toFixed(2)),
-            Number((nextClose + 0.18).toFixed(2)),
-            Number((nextClose + 0.35).toFixed(2)),
-          ],
-          bids: [
-            Number((nextClose - 0.08).toFixed(2)),
-            Number((nextClose - 0.19).toFixed(2)),
-            Number((nextClose - 0.32).toFixed(2)),
-          ],
-        });
-
-        return nextClose;
+        return nextPrices;
       });
-    }, 1800);
+    }, selectedTimeframe.intervalMs);
+
     return () => clearInterval(interval);
-  }, [selectedPair]);
+  }, [selectedTimeframe]);
+
+  // Active Trade Countdown Timer Tick
+  useEffect(() => {
+    if (!activePosition) return;
+
+    const timer = setInterval(() => {
+      setActivePosition((prev) => {
+        if (!prev) return null;
+        if (prev.remainingSeconds <= 1) {
+          // Resolve Trade Order automatically!
+          finalizeTradePosition(prev);
+          return null;
+        }
+        return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [activePosition]);
 
   useEffect(() => {
     fetchHistory();
@@ -160,24 +202,55 @@ export function BrokerView() {
     }
   };
 
-  const handleExecuteTrade = async (type: "BUY" | "SELL") => {
+  const handleStartTradePosition = (type: "BUY" | "SELL") => {
     if (!user) return;
     if (tradeAmount < 5) {
       toast.error("Minimum order size is $5");
       return;
     }
 
-    // Balance check & automatic redirection
     if (user.balance < tradeAmount) {
       toast.error(`Insufficient balance ($${user.balance.toFixed(2)}). Redirecting to Deposit...`);
-      setTimeout(() => {
-        setCurrentTab("wallet");
-      }, 1000);
+      setTimeout(() => setCurrentTab("wallet"), 1000);
       return;
     }
 
+    if (activePosition) {
+      toast.error("You currently have an active trade order running! Wait for expiration.");
+      return;
+    }
+
+    const currentLivePrice = pairPrices[selectedPair.symbol] || selectedPair.basePrice;
+
+    const newPos: ActivePosition = {
+      id: "pos_" + Date.now(),
+      pair: selectedPair.symbol,
+      type,
+      amount: tradeAmount,
+      leverage,
+      entryPrice: currentLivePrice,
+      durationSeconds: selectedDuration.seconds,
+      remainingSeconds: selectedDuration.seconds,
+      startTime: Date.now(),
+    };
+
+    setActivePosition(newPos);
+    toast.success(`🚀 ${type} position opened on ${selectedPair.symbol} @ $${currentLivePrice.toFixed(2)}!`);
+  };
+
+  const finalizeTradePosition = async (pos: ActivePosition) => {
     setLoading(true);
-    const outcome = calculateTradeOutcome(user.id, tradeAmount);
+    const exitPrice = pairPrices[pos.pair] || pos.entryPrice;
+    const isBuy = pos.type === "BUY";
+    const priceDiff = exitPrice - pos.entryPrice;
+
+    // Pixel perfect binary decision
+    const userWon = isBuy ? priceDiff > 0 : priceDiff < 0;
+    const outcome = calculateTradeOutcome(user?.id || "usr_default", pos.amount);
+
+    // Enforce win/loss payout
+    const finalWin = userWon;
+    const profitVal = finalWin ? Number((pos.amount * 0.85).toFixed(2)) : -pos.amount;
 
     try {
       const res = await fetch("/api/broker/trade", {
@@ -187,55 +260,59 @@ export function BrokerView() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          pair: selectedPair.symbol,
-          type,
-          amount: tradeAmount,
-          leverage,
-          entryPrice: livePrice,
-          outcomeWin: outcome.win,
-          profitAmount: outcome.profit,
+          pair: pos.pair,
+          type: pos.type,
+          amount: pos.amount,
+          leverage: pos.leverage,
+          entryPrice: pos.entryPrice,
+          outcomeWin: finalWin,
+          profitAmount: profitVal,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Trade execution failed");
 
-      if (outcome.win) {
-        toast.success(`🎉 ORDER PROFITABLE! +$${outcome.profit} on ${selectedPair.symbol}`);
+      if (finalWin) {
+        confetti({ particleCount: 80, spread: 70 });
+        toast.success(`🎉 TRADE PROFITABLE! +$${profitVal} on ${pos.pair}!`);
       } else {
-        toast.error(`📉 Order closed: -$${Math.abs(outcome.profit)} on ${selectedPair.symbol}`);
+        toast.error(`📉 Order Expired: -$${Math.abs(profitVal)} on ${pos.pair}`);
       }
 
       updateBalance(data.newBalance);
       fetchHistory();
     } catch (err: any) {
-      toast.error(err.message || "Failed to execute order");
+      toast.error(err.message || "Failed to finalize trade");
     } finally {
       setLoading(false);
     }
   };
 
+  const currentPairPrice = pairPrices[selectedPair.symbol] || selectedPair.basePrice;
+  const currentChart = pairCharts[selectedPair.symbol] || [];
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
-      {/* Glassmorphic Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-slate-900/80 border border-slate-800 p-6 md:p-8 backdrop-blur-md shadow-2xl">
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900/90 border border-slate-800 p-6 md:p-8 backdrop-blur-md shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold mb-3">
               <CandlestickChart className="w-4 h-4 text-amber-400" />
-              <span>INSTITUTIONAL TRADE MARKET & MATCHING ENGINE</span>
+              <span>INSTITUTIONAL QUANT MATCHING ENGINE</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-              Real-Time Trade Market
+              Real-Time Trading Terminal
             </h1>
             <p className="text-slate-400 text-xs sm:text-sm max-w-2xl mt-1">
-              Leveraged Forex, Crypto & Commodity order execution with real-time volatility markers, spontaneous ticking feeds, and low-latency matching.
+              Independent asset charts, green/red candlestick price action, adjustable timeframes, and pixel-perfect trade execution.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="bg-slate-950/90 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs font-mono">
-              <span className="text-slate-500 block text-[10px]">LIVE NETWORK GAS</span>
+              <span className="text-slate-500 block text-[10px]">NETWORK GAS</span>
               <span className="text-amber-400 font-bold flex items-center gap-1">
                 <Fuel className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> ${liveGasFee} / Tx
               </span>
@@ -254,70 +331,102 @@ export function BrokerView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Terminal & Candlestick Chart */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Pair Switcher */}
+          {/* Asset Switcher */}
           <div className="flex gap-2 overflow-x-auto scrollbar-none pb-2">
-            {TRADING_PAIRS.map((p) => (
-              <button
-                key={p.symbol}
-                onClick={() => setSelectedPair(p)}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
-                  selectedPair.symbol === p.symbol
-                    ? "gold-gradient text-slate-950 font-black shadow-lg shadow-amber-500/20"
-                    : "bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white"
-                }`}
-              >
-                {p.symbol}
-              </button>
-            ))}
+            {TRADING_PAIRS.map((p) => {
+              const liveVal = pairPrices[p.symbol] || p.basePrice;
+              const isSelected = selectedPair.symbol === p.symbol;
+              return (
+                <button
+                  key={p.symbol}
+                  onClick={() => setSelectedPair(p)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 ${
+                    isSelected
+                      ? "gold-gradient text-slate-950 font-black shadow-lg shadow-amber-500/20 scale-[1.02]"
+                      : "bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white"
+                  }`}
+                >
+                  <span>{p.symbol}</span>
+                  <span className={`font-mono text-[11px] ${isSelected ? "text-slate-950" : "text-amber-400"}`}>
+                    ${liveVal.toFixed(2)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+
+          {/* Active Live Position Banner */}
+          {activePosition && (
+            <div className="p-5 rounded-3xl bg-amber-950/40 border border-amber-500/50 shadow-2xl space-y-3 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase ${
+                    activePosition.type === "BUY" ? "bg-emerald-500 text-slate-950" : "bg-rose-500 text-white"
+                  }`}>
+                    {activePosition.type === "BUY" ? "▲ CALL (LONG)" : "▼ PUT (SHORT)"}
+                  </span>
+                  <span className="font-bold text-white text-sm">{activePosition.pair}</span>
+                  <span className="text-xs text-slate-400 font-mono">Size: ${activePosition.amount} ({activePosition.leverage}x)</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 font-mono font-black text-amber-400 text-sm">
+                  <Timer className="w-4 h-4 text-amber-400 animate-spin" />
+                  <span>{Math.floor(activePosition.remainingSeconds / 60)}:{(activePosition.remainingSeconds % 60).toString().padStart(2, "0")}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
+                <div>
+                  <span className="text-slate-500 text-[10px] block uppercase">Entry Price</span>
+                  <strong className="text-white">${activePosition.entryPrice.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[10px] block uppercase">Live Price</span>
+                  <strong className="text-amber-400">${currentPairPrice.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[10px] block uppercase">Est. Payout</span>
+                  <strong className="text-emerald-400">+${(activePosition.amount * 0.85).toFixed(2)} (+85%)</strong>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Chart Container */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4 backdrop-blur-md shadow-2xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-4">
+            {/* Chart Top Bar with Timeframe Selectors */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
               <div>
                 <h3 className="text-lg font-black text-white">{selectedPair.name} ({selectedPair.symbol})</h3>
-                <p className="text-xs text-slate-400 font-mono">
-                  Live Rate: <strong className="text-amber-400">${livePrice.toFixed(2)}</strong> | Gas Fee: <strong className="text-amber-300">${liveGasFee}</strong> | Spread: <strong className="text-emerald-400">{liveSpread} pips</strong>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  Live Market Price: <strong className="text-amber-400">${currentPairPrice.toFixed(2)}</strong> | Spread: <strong className="text-emerald-400">{liveSpread} pips</strong>
                 </p>
               </div>
 
-              <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl w-fit">
-                <Activity className="w-3.5 h-3.5 animate-pulse" /> SPONTANEOUS TICKING
-              </span>
-            </div>
-
-            {/* Timeframe selector & Chart Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-4">
-              <div>
-                <h3 className="text-lg font-black text-white">{selectedPair.name} ({selectedPair.symbol})</h3>
-                <p className="text-xs text-slate-400 font-mono">
-                  Live Rate: <strong className="text-amber-400">${livePrice.toFixed(2)}</strong> | Gas Fee: <strong className="text-amber-300">${liveGasFee}</strong> | Spread: <strong className="text-emerald-400">{liveSpread} pips</strong>
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
-                  {(["1M", "5M", "15M", "1H"] as const).map((tf) => (
-                    <button
-                      key={tf}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-400 hover:bg-amber-950/50 cursor-pointer"
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
-                <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl w-fit">
-                  <Activity className="w-3.5 h-3.5 animate-pulse" /> TICKING
-                </span>
+              {/* Timeframe selector buttons */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 text-[11px] font-bold">
+                {TIMEFRAMES.map((tf) => (
+                  <button
+                    key={tf.label}
+                    onClick={() => setSelectedTimeframe(tf)}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                      selectedTimeframe.label === tf.label
+                        ? "bg-amber-600 text-slate-950 font-black shadow-md"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* Authentic SVG Candlestick Chart */}
             <div className="h-72 w-full bg-slate-950 rounded-2xl border border-slate-800/90 p-4 relative overflow-hidden flex flex-col justify-between">
               {(() => {
-                if (chartData.length === 0) return null;
-                const lows = chartData.map((c) => c.low);
-                const highs = chartData.map((c) => c.high);
+                if (currentChart.length === 0) return null;
+                const lows = currentChart.map((c) => c.low);
+                const highs = currentChart.map((c) => c.high);
                 const minP = Math.min(...lows) * 0.998;
                 const maxP = Math.max(...highs) * 1.002;
                 const pRange = maxP - minP || 1;
@@ -325,13 +434,13 @@ export function BrokerView() {
 
                 return (
                   <div className="relative w-full h-[220px]">
-                    {/* Background Horizontal Price Lines */}
+                    {/* Background Price Lines */}
                     {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
                       const val = maxP - ratio * pRange;
                       return (
                         <div
                           key={i}
-                          className="absolute w-full border-b border-slate-800/50 flex justify-end pr-1 text-[9px] font-mono text-slate-500"
+                          className="absolute w-full border-b border-slate-800/40 flex justify-end pr-2 text-[9px] font-mono text-slate-500"
                           style={{ top: `${ratio * 100}%` }}
                         >
                           ${val.toFixed(2)}
@@ -341,13 +450,14 @@ export function BrokerView() {
 
                     {/* SVG Candlesticks */}
                     <svg className="w-full h-full overflow-visible">
-                      {chartData.map((c, idx) => {
-                        const totalCandles = chartData.length;
+                      {currentChart.map((c, idx) => {
+                        const totalCandles = currentChart.length;
                         const pctX = ((idx + 0.5) / totalCandles) * 100;
                         const yHigh = chartH - ((c.high - minP) / pRange) * chartH;
                         const yLow = chartH - ((c.low - minP) / pRange) * chartH;
                         const yOpen = chartH - ((c.open - minP) / pRange) * chartH;
                         const yClose = chartH - ((c.close - minP) / pRange) * chartH;
+
                         const isUp = c.close >= c.open;
                         const color = isUp ? "#10b981" : "#f43f5e";
                         const yTop = Math.min(yOpen, yClose);
@@ -366,12 +476,12 @@ export function BrokerView() {
                             />
                             {/* Candle Body Box */}
                             <rect
-                              x={`calc(${pctX}% - 6px)`}
+                              x={`calc(${pctX}% - 5px)`}
                               y={yTop}
-                              width={12}
+                              width={10}
                               height={bodyH}
                               fill={color}
-                              rx={1.5}
+                              rx={1}
                               className="transition-all duration-300 hover:opacity-80"
                             />
                           </g>
@@ -383,39 +493,43 @@ export function BrokerView() {
               })()}
 
               <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 border-t border-slate-800/80 pt-2">
-                <span>T-30s</span>
-                <span>T-20s</span>
-                <span>T-10s</span>
-                <span className="text-emerald-400 font-bold">LIVE TICK</span>
+                <span>-5m</span>
+                <span>-3m</span>
+                <span>-1m</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  LIVE TICK ({selectedTimeframe.name})
+                </span>
               </div>
             </div>
 
-            {/* Orderbook Depth Summary */}
-            <div className="grid grid-cols-2 gap-4 text-xs font-mono bg-slate-950/90 p-4 rounded-2xl border border-slate-800/80">
-              <div>
-                <span className="text-[10px] text-emerald-400 font-bold block mb-1.5">ASKS / SELL ORDERS</span>
-                {orderBook.asks.map((ask, i) => (
-                  <div key={i} className="flex justify-between text-slate-300 text-[11px] py-0.5">
-                    <span>${ask}</span>
-                    <span className="text-slate-500">{(Math.random() * 2 + 0.5).toFixed(2)} Vol</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <span className="text-[10px] text-rose-400 font-bold block mb-1.5">BIDS / BUY ORDERS</span>
-                {orderBook.bids.map((bid, i) => (
-                  <div key={i} className="flex justify-between text-slate-300 text-[11px] py-0.5">
-                    <span>${bid}</span>
-                    <span className="text-slate-500">{(Math.random() * 2 + 0.5).toFixed(2)} Vol</span>
-                  </div>
+            {/* Trade Expiration Selection Bar */}
+            <div className="space-y-2 pt-2">
+              <label className="block text-xs font-bold text-slate-400 uppercase">
+                Select Trade Duration Expiration
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {TRADE_EXPIRATIONS.map((exp) => (
+                  <button
+                    key={exp.label}
+                    onClick={() => setSelectedDuration(exp)}
+                    className={`py-2.5 rounded-xl text-xs font-bold transition border cursor-pointer flex items-center justify-center gap-1.5 ${
+                      selectedDuration.seconds === exp.seconds
+                        ? "bg-amber-500/20 border-amber-500 text-amber-400 font-black shadow-md"
+                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{exp.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
 
-            {/* Execution Controls */}
+            {/* Order Parameters */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Position Size ($)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Position Capital ($ USD)</label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                   <input
@@ -423,7 +537,7 @@ export function BrokerView() {
                     min="5"
                     value={tradeAmount}
                     onChange={(e) => setTradeAmount(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-white text-xs font-bold focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-white text-xs font-bold focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
               </div>
@@ -433,22 +547,22 @@ export function BrokerView() {
                 <select
                   value={leverage}
                   onChange={(e) => setLeverage(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:outline-none focus:border-amber-500 cursor-pointer font-mono"
                 >
                   <option value={10}>10x Leverage</option>
                   <option value={50}>50x Leverage</option>
                   <option value={100}>100x Leverage (Standard)</option>
-                  <option value={500}>500x Max Leverage</option>
+                  <option value={500}>500x Institutional Leverage</option>
                 </select>
               </div>
             </div>
 
-            {/* Balance Check Indicator */}
+            {/* Insufficient Balance Indicator */}
             {user && user.balance < tradeAmount && (
               <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
                 <span className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-                  Insufficient wallet balance (${user.balance.toFixed(2)}). Deposit required to execute.
+                  Insufficient balance (${user.balance.toFixed(2)}). Deposit required to trade.
                 </span>
                 <button
                   onClick={() => setCurrentTab("wallet")}
@@ -459,29 +573,38 @@ export function BrokerView() {
               </div>
             )}
 
+            {/* Trade Action Buttons */}
             <div className="grid grid-cols-2 gap-4 pt-2">
               <button
-                onClick={() => handleExecuteTrade("BUY")}
-                disabled={loading}
-                className="py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition"
+                onClick={() => handleStartTradePosition("BUY")}
+                disabled={loading || !!activePosition}
+                className={`py-4 rounded-2xl font-extrabold text-xs uppercase shadow-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+                  activePosition
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20"
+                }`}
               >
                 <ArrowUp className="w-4 h-4" />
-                <span>Execute Long (Buy)</span>
+                <span>Execute CALL (Buy Up)</span>
               </button>
 
               <button
-                onClick={() => handleExecuteTrade("SELL")}
-                disabled={loading}
-                className="py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs uppercase shadow-xl shadow-rose-600/20 flex items-center justify-center gap-2 cursor-pointer transition"
+                onClick={() => handleStartTradePosition("SELL")}
+                disabled={loading || !!activePosition}
+                className={`py-4 rounded-2xl font-extrabold text-xs uppercase shadow-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+                  activePosition
+                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20"
+                }`}
               >
                 <ArrowDown className="w-4 h-4" />
-                <span>Execute Short (Sell)</span>
+                <span>Execute PUT (Sell Down)</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Trade Order History */}
+        {/* Executed Trade Orders History */}
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <History className="w-5 h-5 text-amber-400" />
@@ -505,14 +628,14 @@ export function BrokerView() {
                       </span>
                       <span className="font-bold text-white text-xs">{o.pair}</span>
                     </div>
-                    <span className={`text-xs font-black ${
+                    <span className={`text-xs font-black font-mono ${
                       o.profitAmount >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}>
                       {o.profitAmount >= 0 ? `+$${o.profitAmount}` : `-$${Math.abs(o.profitAmount)}`}
                     </span>
                   </div>
 
-                  <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                  <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800 font-mono">
                     <span>Position: ${o.amount} ({o.leverage}x)</span>
                     <span>Entry: ${o.entryPrice}</span>
                   </div>

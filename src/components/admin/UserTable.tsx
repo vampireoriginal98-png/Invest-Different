@@ -268,6 +268,8 @@ export function UserTable({ users: externalUsers, onRefresh }: UserTableProps) {
                     </p>
                     <p className="text-slate-400">{u.email}</p>
                     <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
+                      <span className="text-amber-400 font-bold">ID: {u.id}</span>
+                      <span>•</span>
                       <span>Ref: {u.referralCode}</span>
                       <span>•</span>
                       <span>PIN: {u.transactionPin ? "✅ Active" : "❌ Unset"}</span>

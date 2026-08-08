@@ -29,6 +29,7 @@ interface DBData {
   claimedTasks: any[];
   unlockedAchievements: any[];
   insuranceTiers: any[];
+  priceAlerts?: any[];
 }
 
 function getInitialDB(): DBData {
@@ -161,6 +162,7 @@ function readDB(): DBData {
     if (!parsed.tradeOrders) parsed.tradeOrders = [];
     if (!parsed.claimedTasks) parsed.claimedTasks = [];
     if (!parsed.unlockedAchievements) parsed.unlockedAchievements = [];
+    if (!parsed.priceAlerts) parsed.priceAlerts = [];
     if (!parsed.insuranceTiers) parsed.insuranceTiers = getInitialDB().insuranceTiers;
     return parsed;
   } catch (e) {
@@ -511,6 +513,93 @@ app.post("/api/user/kyc", (req: Request, res: Response) => {
   writeDB(db);
   const { password: _, ...userWithoutPassword } = user;
   return res.json({ success: true, user: userWithoutPassword });
+});
+
+// Target Investment Goal Route
+app.post("/api/user/target-goal", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const { targetInvestmentGoal } = req.body;
+  const numGoal = Number(targetInvestmentGoal);
+  if (!numGoal || numGoal < 100) {
+    return res.status(400).json({ error: "Minimum target investment goal is $100" });
+  }
+
+  const db = readDB();
+  const user = db.users.find((u) => u.id === auth.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  user.targetInvestmentGoal = numGoal;
+  user.updatedAt = new Date().toISOString();
+  writeDB(db);
+
+  const { password: _, ...userWithoutPassword } = user;
+  return res.json({ success: true, user: userWithoutPassword });
+});
+
+// Price Alerts API Routes
+app.get("/api/user/alerts", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const db = readDB();
+  const alerts = (db.priceAlerts || []).filter((a: any) => a.userId === auth.id);
+  return res.json({ alerts });
+});
+
+app.post("/api/user/alerts", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const { symbol, targetPrice, condition } = req.body;
+  if (!symbol || !targetPrice || !condition) {
+    return res.status(400).json({ error: "Symbol, target price, and condition are required" });
+  }
+
+  const db = readDB();
+  db.priceAlerts = db.priceAlerts || [];
+
+  const newAlert = {
+    id: "alt_" + Date.now(),
+    userId: auth.id,
+    symbol,
+    targetPrice: Number(targetPrice),
+    condition: condition === "BELOW" ? "BELOW" : "ABOVE",
+    active: true,
+    createdAt: new Date().toISOString(),
+    triggeredAt: null,
+  };
+
+  db.priceAlerts.unshift(newAlert);
+  writeDB(db);
+
+  return res.json({ success: true, alert: newAlert });
+});
+
+app.delete("/api/user/alerts/:id", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const db = readDB();
+  db.priceAlerts = (db.priceAlerts || []).filter((a: any) => !(a.id === req.params.id && a.userId === auth.id));
+  writeDB(db);
+
+  return res.json({ success: true });
+});
+
+app.patch("/api/user/alerts/:id/toggle", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const db = readDB();
+  const alert = (db.priceAlerts || []).find((a: any) => a.id === req.params.id && a.userId === auth.id);
+  if (!alert) return res.status(404).json({ error: "Alert not found" });
+
+  alert.active = !alert.active;
+  writeDB(db);
+
+  return res.json({ success: true, alert });
 });
 
 // ------------------- GROQ / AI ASSISTANT API ROUTE ------------------- //
@@ -953,7 +1042,17 @@ app.post("/api/withdrawal/request", (req: Request, res: Response) => {
     return res.status(401).json({ error: "Incorrect Transaction Security PIN!" });
   }
 
-  // 3. Minimum Amounts ($1000 for standard profits, $500 for referral earnings)
+  // 3. Mandatory Approved Deposit Check
+  const hasApprovedDeposit = db.deposits.some(
+    (d: any) => d.userId === user.id && d.status === "APPROVED"
+  );
+  if (!hasApprovedDeposit) {
+    return res.status(403).json({
+      error: "Withdrawals locked! You must have at least one deposit confirmed and approved by admin before you can withdraw."
+    });
+  }
+
+  // 4. Minimum Amounts ($1000 for standard profits, $500 for referral earnings)
   const minRequired = isReferralWithdrawal ? 500 : 1000;
   const availablePool = isReferralWithdrawal ? (user.referralEarnings || 0) : user.balance;
 
@@ -1038,6 +1137,17 @@ app.get("/api/wallet/transactions", (req: Request, res: Response) => {
   const userActivities = db.activities.filter((a) => a.userId === auth.id);
 
   return res.json({ deposits: userDeposits, withdrawals: userWithdrawals, activities: userActivities });
+});
+
+app.get("/api/user/activity", (req: Request, res: Response) => {
+  const auth = getAuthUser(req);
+  if (!auth) return res.status(401).json({ error: "Unauthorized" });
+
+  const db = readDB();
+  const userActivities = (db.activities || []).filter((a: any) => a.userId === auth.id);
+  userActivities.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return res.json({ activities: userActivities });
 });
 
 // ------------------- STAGE 2 MODULE APIs ------------------- //

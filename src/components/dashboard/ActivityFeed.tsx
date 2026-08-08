@@ -1,50 +1,50 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { ActivityLog } from "@/types";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ArrowUpRight, TrendingUp, ShieldCheck, Gift, Activity } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, TrendingUp, ShieldCheck, Gift, Activity, Clock } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
 
 interface ActivityFeedProps {
   activities?: ActivityLog[];
 }
 
-export function ActivityFeed({ activities }: ActivityFeedProps) {
-  const defaultActivities: ActivityLog[] = [
-    {
-      id: "act_1",
-      userId: "u1",
-      title: "Deposit Approved",
-      description: "$1,000.00 USDT deposit confirmed by admin",
-      amount: 1000,
-      type: "deposit",
-      createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    },
-    {
-      id: "act_2",
-      userId: "u1",
-      title: "Gold Plan Investment",
-      description: "Allocated $1,000 to Gold Yield Plan (12.5% monthly)",
-      amount: -1000,
-      type: "investment",
-      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    },
-    {
-      id: "act_3",
-      userId: "u1",
-      title: "Daily Profit Credited",
-      description: "Automated daily yield dividend credited",
-      amount: 4.16,
-      type: "investment",
-      createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    },
-  ];
+export function ActivityFeed({ activities: propsActivities }: ActivityFeedProps) {
+  const { token } = useAuthStore();
+  const [items, setItems] = useState<ActivityLog[]>(propsActivities || []);
+  const [loading, setLoading] = useState(!propsActivities);
 
-  const list = activities && activities.length > 0 ? activities : defaultActivities;
+  useEffect(() => {
+    if (propsActivities) {
+      setItems(propsActivities);
+      return;
+    }
+    fetchRealActivities();
+  }, [token, propsActivities]);
+
+  const fetchRealActivities = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/user/activity", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.activities || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch activity history:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getIcon = (type: string) => {
     switch (type) {
       case "deposit":
         return <ArrowUpRight className="w-4 h-4 text-emerald-400" />;
+      case "withdrawal":
+        return <ArrowDownRight className="w-4 h-4 text-rose-400" />;
       case "investment":
         return <TrendingUp className="w-4 h-4 text-amber-400" />;
       case "kyc":
@@ -58,38 +58,54 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
 
   return (
     <Card className="h-full">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800 pb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-amber-400" />
-          <CardTitle>Recent Activity Feed</CardTitle>
+          <CardTitle>Account Activity Log</CardTitle>
         </div>
+        <button
+          onClick={fetchRealActivities}
+          className="text-slate-400 hover:text-amber-400 transition cursor-pointer"
+          title="Refresh History"
+        >
+          <Clock className="w-4 h-4" />
+        </button>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {list.map((act) => (
-          <div
-            key={act.id}
-            className="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-slate-700 transition"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                {getIcon(act.type)}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-200">{act.title}</p>
-                <p className="text-xs text-slate-400">{act.description}</p>
-                <span className="text-[10px] text-slate-500">{formatDate(act.createdAt)}</span>
-              </div>
-            </div>
-
-            {act.amount !== undefined && (
-              <div className="text-right font-bold text-sm">
-                <span className={act.amount >= 0 ? "text-emerald-400" : "text-slate-300"}>
-                  {act.amount >= 0 ? "+" : ""}{formatCurrency(act.amount)}
-                </span>
-              </div>
-            )}
+      <CardContent className="space-y-3 pt-4">
+        {loading ? (
+          <div className="p-8 text-center text-slate-500 text-xs">Loading activity history...</div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-xs italic bg-slate-950 rounded-2xl border border-slate-800 space-y-1">
+            <p className="font-semibold text-slate-400">No activity recorded yet</p>
+            <p>Your deposit approvals, yield dividends, withdrawals, and trade positions will appear here.</p>
           </div>
-        ))}
+        ) : (
+          items.map((act) => (
+            <div
+              key={act.id}
+              className="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-slate-700 transition"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+                  {getIcon(act.type)}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-200">{act.title}</p>
+                  <p className="text-[11px] text-slate-400 leading-tight">{act.description}</p>
+                  <span className="text-[10px] text-slate-500 font-mono">{formatDate(act.createdAt)}</span>
+                </div>
+              </div>
+
+              {act.amount !== undefined && (
+                <div className="text-right font-bold text-xs shrink-0 font-mono">
+                  <span className={act.amount >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                    {act.amount >= 0 ? "+" : ""}{formatCurrency(act.amount)}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </CardContent>
     </Card>
   );

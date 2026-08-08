@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { PriceAlert } from "@/types";
 import {
   User as UserIcon,
   ShieldCheck,
@@ -14,7 +15,14 @@ import {
   Camera,
   Check,
   ExternalLink,
+  Bell,
+  Plus,
+  Trash2,
+  TrendingUp,
+  Activity,
+  Zap,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 const AVATAR_PRESETS = [
   "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
@@ -25,8 +33,19 @@ const AVATAR_PRESETS = [
   "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
 ];
 
+const ALERT_ASSETS = [
+  { symbol: "BTC/USD", name: "Bitcoin Index", basePrice: 68420 },
+  { symbol: "ETH/USD", name: "Ethereum Spot", basePrice: 3540 },
+  { symbol: "SOL/USD", name: "Solana Dex", basePrice: 178 },
+  { symbol: "AAPL", name: "Apple Inc. Equity", basePrice: 224 },
+  { symbol: "NVDA", name: "NVIDIA Corp Stock", basePrice: 128 },
+  { symbol: "TSLA", name: "Tesla Inc Stock", basePrice: 215 },
+];
+
 export function ProfileView() {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, token } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<"SETTINGS" | "PRICE_ALERTS">("SETTINGS");
+
   const [firstName, setFirstName] = useState(user?.firstName || user?.name?.split(" ")[0] || "");
   const [lastName, setLastName] = useState(user?.lastName || user?.name?.split(" ")[1] || "");
   const [displayName, setDisplayName] = useState(user?.displayName || user?.name || "");
@@ -36,11 +55,99 @@ export function ProfileView() {
   // Security Passwords
   const [txPassword, setTxPassword] = useState("");
   const [confirmTxPassword, setConfirmTxPassword] = useState("");
-  const [currentPass, setCurrentPass] = useState("");
-  const [newPass, setNewPass] = useState("");
 
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Price Alerts State
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [alertSymbol, setAlertSymbol] = useState("BTC/USD");
+  const [alertTarget, setAlertTarget] = useState<number>(68500);
+  const [alertCondition, setAlertCondition] = useState<"ABOVE" | "BELOW">("ABOVE");
+
+  useEffect(() => {
+    fetchAlerts();
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, [token]);
+
+  const fetchAlerts = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/user/alerts", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAlerts(data.alerts || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!alertTarget || alertTarget <= 0) {
+      toast.error("Please enter a valid target threshold price");
+      return;
+    }
+    try {
+      const res = await fetch("/api/user/alerts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          symbol: alertSymbol,
+          targetPrice: alertTarget,
+          condition: alertCondition,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Price alert created for ${alertSymbol} at $${alertTarget}`);
+        fetchAlerts();
+      } else {
+        toast.error(data.error || "Failed to create price alert");
+      }
+    } catch (err) {
+      toast.error("Network error creating alert");
+    }
+  };
+
+  const handleDeleteAlert = async (id: string) => {
+    try {
+      const res = await fetch(`/api/user/alerts/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast.success("Alert deleted");
+        setAlerts((prev) => prev.filter((a) => a.id !== id));
+      }
+    } catch (e) {
+      toast.error("Error deleting alert");
+    }
+  };
+
+  const handleToggleAlert = async (id: string) => {
+    try {
+      const res = await fetch(`/api/user/alerts/${id}/toggle`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setAlerts((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a))
+        );
+      }
+    } catch (e) {
+      toast.error("Error toggling alert");
+    }
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +244,10 @@ export function ProfileView() {
               {displayName || user?.name || "Investor Profile"}
             </h1>
             <p className="text-xs text-slate-400 font-medium">{user?.email}</p>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 border border-amber-500/40 px-3 py-1 text-[11px] font-mono font-bold text-amber-400">
+                Account ID: <strong className="text-white">{user?.id}</strong>
+              </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
                 KYC: {user?.kycStatus}
               </span>
@@ -146,6 +256,30 @@ export function ProfileView() {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+          <button
+            onClick={() => setActiveTab("SETTINGS")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+              activeTab === "SETTINGS"
+                ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <UserIcon className="w-4 h-4" /> Personal & Security
+          </button>
+          <button
+            onClick={() => setActiveTab("PRICE_ALERTS")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+              activeTab === "PRICE_ALERTS"
+                ? "bg-amber-600 text-slate-950 font-black shadow-lg"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Bell className="w-4 h-4" /> Price Alerts ({alerts.length})
+          </button>
         </div>
       </div>
 
@@ -162,7 +296,163 @@ export function ProfileView() {
         </div>
       )}
 
-      {/* Grid Forms */}
+      {/* Tab Content */}
+      {activeTab === "PRICE_ALERTS" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Create Alert Form */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+              <Bell className="w-5 h-5 text-amber-400" />
+              <h2 className="text-base font-bold text-white uppercase tracking-wider">
+                Create Threshold Alert
+              </h2>
+            </div>
+
+            <form onSubmit={handleCreateAlert} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Select Asset</label>
+                <select
+                  value={alertSymbol}
+                  onChange={(e) => {
+                    const sel = e.target.value;
+                    setAlertSymbol(sel);
+                    const found = ALERT_ASSETS.find((a) => a.symbol === sel);
+                    if (found) setAlertTarget(found.basePrice);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500/50"
+                >
+                  {ALERT_ASSETS.map((ast) => (
+                    <option key={ast.symbol} value={ast.symbol}>
+                      {ast.symbol} - {ast.name} (Live ~$${ast.basePrice})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Target Price ($ USD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={alertTarget}
+                  onChange={(e) => setAlertTarget(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono font-bold focus:outline-none focus:border-amber-500/50"
+                  placeholder="68500.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Trigger Condition</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAlertCondition("ABOVE")}
+                    className={`py-2.5 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                      alertCondition === "ABOVE"
+                        ? "bg-emerald-500/20 border-emerald-500 text-emerald-400 font-black"
+                        : "bg-slate-950 border-slate-800 text-slate-400"
+                    }`}
+                  >
+                    ▲ Price Goes Above
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAlertCondition("BELOW")}
+                    className={`py-2.5 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                      alertCondition === "BELOW"
+                        ? "bg-rose-500/20 border-rose-500 text-rose-400 font-black"
+                        : "bg-slate-950 border-slate-800 text-slate-400"
+                    }`}
+                  >
+                    ▼ Price Goes Below
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full gold-gradient py-3 rounded-xl text-slate-950 font-extrabold text-xs uppercase tracking-wider hover:scale-[1.01] active:scale-[0.99] transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Add Price Alert
+              </button>
+            </form>
+          </div>
+
+          {/* Active Alerts List */}
+          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-amber-400" />
+                <h2 className="text-base font-bold text-white uppercase tracking-wider">
+                  Active Price Threshold Alerts ({alerts.length})
+                </h2>
+              </div>
+              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                Live Listener Active
+              </span>
+            </div>
+
+            {alerts.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 italic space-y-2">
+                <Bell className="w-8 h-8 text-slate-600 mx-auto" />
+                <p>No price alerts created yet. Add an alert above to get instant browser and toast notifications when market targets are hit!</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {alerts.map((alt) => (
+                  <div
+                    key={alt.id}
+                    className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-950/80 border border-amber-600/40 text-amber-400">
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-white text-sm">{alt.symbol}</span>
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                              alt.condition === "ABOVE"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                                : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
+                            }`}
+                          >
+                            {alt.condition === "ABOVE" ? "▲ GOES ABOVE" : "▼ GOES BELOW"}
+                          </span>
+                        </div>
+                        <p className="text-xs font-mono text-slate-400 mt-0.5">
+                          Target: <strong className="text-amber-400">${alt.targetPrice.toLocaleString()}</strong>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleToggleAlert(alt.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          alt.active
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-slate-900 text-slate-500 border border-slate-800"
+                        }`}
+                      >
+                        {alt.active ? "Active" : "Paused"}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAlert(alt.id)}
+                        className="p-2 rounded-xl text-rose-400 hover:bg-rose-950/50 transition cursor-pointer border border-slate-800"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Original Personal & Security Settings Grid */
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Personal Details */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
@@ -295,6 +585,7 @@ export function ProfileView() {
           </form>
         </div>
       </div>
+      )}
     </div>
   );
 }

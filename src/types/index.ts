@@ -53,10 +53,22 @@ export interface User {
   insuranceLevel: number;
   consecutiveDays?: number;
   lastActiveDate?: string | null;
+  targetInvestmentGoal?: number;
   lastFreeSpinDate?: string | null;
   lastDailyBonusDate?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PriceAlert {
+  id: string;
+  userId: string;
+  symbol: string;
+  targetPrice: number;
+  condition: "ABOVE" | "BELOW";
+  active: boolean;
+  createdAt: string;
+  triggeredAt?: string | null;
 }
 
 export interface Deposit {

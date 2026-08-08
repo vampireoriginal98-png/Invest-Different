@@ -27,7 +27,7 @@ const MAIN_NAV = [
   { icon: LayoutDashboard, label: "Dashboard", tab: "dashboard" },
   { icon: Wallet, label: "Deposit & Wallet", tab: "wallet" },
   { icon: ArrowUpRight, label: "Withdraw Funds", tab: "withdrawals" },
-  { icon: TrendingUp, label: "Bot Yield Plans", tab: "investments" },
+  { icon: TrendingUp, label: "Yield Investment Plans", tab: "investments" },
   { icon: Landmark, label: "Stock Portfolios", tab: "stocks" },
   { icon: CandlestickChart, label: "Trade Market Desk", tab: "broker" },
   { icon: Shield, label: "Insurance Aegis", tab: "insurance" },
